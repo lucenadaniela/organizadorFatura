@@ -351,6 +351,42 @@ tbody tr td { font-size: 0.90rem; }
 st.title(APP_TITLE)
 st.caption("Envie o PDF do Nubank (texto selecionável) ou CSV (data, descricao, valor).")
 
+/* ---- Melhorar contraste geral de textos ---- */
+.stApp, .stMarkdown, .stCaption, label, p, span, div {
+  color: #0f172a !important;
+}
+
+/* ---- Abas: deixar legível ---- */
+.stTabs [data-baseweb="tab"] {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(15,23,42,0.15) !important;
+}
+
+.stTabs [aria-selected="true"] {
+  outline: 2px solid rgba(37,99,235,0.35) !important;
+}
+
+/* ---- File uploader: fundo claro e texto legível ---- */
+[data-testid="stFileUploader"] section {
+  background: #ffffff !important;
+  border: 1px dashed rgba(15,23,42,0.25) !important;
+  border-radius: 14px !important;
+}
+
+/* Texto “Drag and drop…” */
+[data-testid="stFileUploader"] * {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+/* ---- Aumentar tamanhos no mobile ---- */
+@media (max-width: 768px){
+  .stTabs [data-baseweb="tab"] { font-size: 0.95rem !important; }
+  [data-testid="stFileUploader"] * { font-size: 0.95rem !important; }
+}
+
 
 # =========================
 # Carregamentos
