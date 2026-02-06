@@ -17,8 +17,8 @@ except Exception:
 
 
 APP_TITLE = "Resumo da fatura (com regras + parcelamento)"
-RULES_FILE = "regras_pagamentos.json"         # regras manuais: keyword + (valor opcional)
-PARCELAS_FILE = "regras_parcelamento.json"    # regras automáticas: id_parcelamento
+RULES_FILE = "regras_pagamentos.json"
+PARCELAS_FILE = "regras_parcelamento.json"
 
 
 # =========================
@@ -81,8 +81,9 @@ def load_rules() -> pd.DataFrame:
             pass
 
     # Defaults (se não existir regras_pagamentos.json)
+    # ✅ Removido: uber sem valor para Daiane (você pediu)
     return pd.DataFrame([
-        # ===== FIXOS (do seu print) =====
+        # ===== FIXOS =====
         {"tipo": "fixo", "palavra_chave": "spotify",         "valor": "40,9",  "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "netflix",         "valor": "20,9",  "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "amazon prime",    "valor": "19,9",  "pessoa": "Yves",   "categoria": "Fixos"},
@@ -91,8 +92,7 @@ def load_rules() -> pd.DataFrame:
         {"tipo": "fixo", "palavra_chave": "academia",        "valor": "133",   "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "nucel",           "valor": "30",    "pessoa": "Yves",   "categoria": "Fixos"},
 
-        # ===== VARIÁVEIS (do seu print) =====
-        {"tipo": "variavel", "palavra_chave": "uber",          "valor": "",       "pessoa": "Daiane", "categoria": "Uber"},
+        # ===== VARIÁVEIS (exemplos) =====
         {"tipo": "variavel", "palavra_chave": "shein",         "valor": "136,50", "pessoa": "Maria",  "categoria": "Roupas"},
         {"tipo": "variavel", "palavra_chave": "mercado livre", "valor": "55,87",  "pessoa": "Maria",  "categoria": "Carregador"},
     ]).fillna("")
@@ -138,7 +138,8 @@ def remover_texto_parcela(desc: str) -> str:
     return RE_PARCELA.sub("", desc or "").strip()
 
 def gerar_id_parcelamento(desc: str, valor: float):
-    base = f"{remover_texto_parcela(desc)}|{float(valor):.2f}".lower()
+    # id mais estável: usa base compacta + valor
+    base = f"{norm_compact(remover_texto_parcela(desc))}|{float(valor):.2f}"
     return hashlib.md5(base.encode("utf-8")).hexdigest()[:10]
 
 
@@ -177,6 +178,7 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
             continue
 
         vr = r["valor_float"]
+        # se a regra tiver valor, exige bater. se estiver vazio, funciona para qualquer valor ✅
         if vr is not None and not valor_bate(valor_lanc, vr, tol=0.01):
             continue
 
@@ -233,6 +235,23 @@ def parse_nubank_pdf(file_bytes: bytes, ano: int):
 
 
 # =========================
+# Detectores Uber / 99 para o resumo (sempre aparecem)
+# =========================
+RE_99_TOKEN = re.compile(r"(^|[^0-9])99([^0-9]|$)")  # evita pegar 199, 999 etc.
+
+def is_uber(desc: str) -> bool:
+    d = norm_compact(desc)
+    return "uber" in d
+
+def is_99(desc: str) -> bool:
+    # tenta ser menos “falso positivo” do que só "99" in texto
+    raw = (desc or "").lower()
+    if "99app" in norm_compact(desc) or "99taxi" in norm_compact(desc) or "99pop" in norm_compact(desc):
+        return True
+    return bool(RE_99_TOKEN.search(raw))
+
+
+# =========================
 # App
 # =========================
 st.set_page_config(page_title=APP_TITLE, layout="wide")
@@ -256,9 +275,8 @@ with st.expander("⚙️ Configurações", expanded=False):
 
 up = st.file_uploader("Upload PDF (Nubank texto selecionável) ou CSV (data, descricao, valor)", type=["pdf", "csv"])
 
-# Expander: Regras
 with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
-    st.caption("Dica: deixe 'valor' vazio para valer para qualquer valor. Use valor só para diferenciar pessoas na mesma loja.")
+    st.caption("Deixe 'valor' vazio para valer para qualquer valor. Use valor só para diferenciar pessoas na mesma loja.")
     rules_edited = st.data_editor(
         rules,
         use_container_width=True,
@@ -315,6 +333,7 @@ if up:
     df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
 
     rules_live = rules_edited.fillna("") if "rules_edited" in locals() else rules.fillna("")
+
     pessoas, cats, fonte = [], [], []
     for _, r in df.iterrows():
         p, c, f = classify(
@@ -332,11 +351,34 @@ if up:
     df["categoria"] = cats
     df["fonte_regra"] = fonte
 
-    # ---- RESUMO (tela principal) ----
+    # =========================
+    # RESUMO (tela principal)
+    # =========================
     st.divider()
+
     total_geral = float(df["valor"].sum())
     st.metric("Total geral", brl(total_geral))
 
+    # ---- bloco Uber / 99 (sempre) ----
+    st.subheader("Uber e 99 (contagem + total)")
+    df_tmp = df.copy()
+    df_tmp["is_uber"] = df_tmp["descricao"].astype(str).apply(is_uber)
+    df_tmp["is_99"] = df_tmp["descricao"].astype(str).apply(is_99)
+
+    uber_total = float(df_tmp.loc[df_tmp["is_uber"], "valor"].sum())
+    uber_qtd = int(df_tmp["is_uber"].sum())
+
+    n99_total = float(df_tmp.loc[df_tmp["is_99"], "valor"].sum())
+    n99_qtd = int(df_tmp["is_99"].sum())
+
+    cU, c9 = st.columns(2)
+    cU.metric("Uber — total", brl(uber_total))
+    cU.caption(f"Quantidade: {uber_qtd}")
+
+    c9.metric("99 — total", brl(n99_total))
+    c9.caption(f"Quantidade: {n99_qtd}")
+
+    # ---- totais por pessoa ----
     totais = df.groupby("pessoa", as_index=False)["valor"].sum().sort_values("valor", ascending=False)
     st.subheader("Totais por pessoa")
     cols = st.columns(min(6, max(1, len(totais))))
