@@ -506,7 +506,7 @@ if up:
     # =========================
     # Parcelamentos
     # =========================
-    with st.expander("📌 Ensinar parcelamentos (aplica até a última parcela)", expanded=False):
+    with st.expander("📌 Gravar parcelamentos (aplica até a última parcela)", expanded=False):
         df_parc = df[df["parcela_total"].notna()].copy()
         if df_parc.empty:
             st.info("Nenhum parcelado detectado nesta fatura.")
