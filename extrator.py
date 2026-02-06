@@ -292,30 +292,40 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-/* --- Layout geral (claro) --- */
-html, body, [class*="css"]  { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-.block-container { padding-top: 0.8rem; padding-bottom: 2rem; max-width: 1050px; }
+/* =========================
+   BASE / MOBILE
+   ========================= */
+html, body, [class*="css"]  {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+}
+.block-container {
+  padding-top: 0.8rem;
+  padding-bottom: 2rem;
+  max-width: 1050px;
+}
 @media (max-width: 768px){
   .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
 }
 
-/* --- Fundo e textos (claro) --- */
-.stApp {
+/* =========================
+   FUNDO (TEMA CLARO)
+   ========================= */
+.stApp{
   background: linear-gradient(180deg, #fbfbfd 0%, #f3f4f6 100%);
   color: #0f172a;
 }
 h1 { font-size: 1.35rem; margin-bottom: 0.15rem; color: #0f172a; }
 h2 { font-size: 1.10rem; margin-top: 0.75rem; color: #0f172a; }
 h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
-.stCaption { color: rgba(15, 23, 42, 0.80) !important; opacity: 1 !important; }
-
-/* ---- Melhorar contraste geral de textos ---- */
-.stApp, .stMarkdown, label, p, span, div {
-  color: #0f172a !important;
+.stCaption, small {
+  color: rgba(15,23,42,0.80) !important;
+  opacity: 1 !important;
 }
 
-/* --- Cards --- */
-.card {
+/* =========================
+   CARDS
+   ========================= */
+.card{
   background: #ffffff;
   border: 1px solid rgba(15,23,42,0.10);
   border-radius: 16px;
@@ -323,12 +333,27 @@ h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
   margin: 8px 0;
   box-shadow: 0 6px 18px rgba(15,23,42,0.06);
 }
-.card-title { font-size: 0.85rem; color: rgba(15,23,42,0.70); margin-bottom: 8px; }
-.card-big { font-size: 1.45rem; font-weight: 750; color: #0f172a; letter-spacing: 0.2px; }
-.card-sub { font-size: 0.82rem; color: rgba(15,23,42,0.65); margin-top: 6px; }
+.card-title{
+  font-size: 0.85rem;
+  color: rgba(15,23,42,0.70);
+  margin-bottom: 8px;
+}
+.card-big{
+  font-size: 1.45rem;
+  font-weight: 750;
+  color: #0f172a;
+  letter-spacing: 0.2px;
+}
+.card-sub{
+  font-size: 0.82rem;
+  color: rgba(15,23,42,0.65);
+  margin-top: 6px;
+}
 
-/* --- Abas: deixar legível ---- */
-.stTabs [data-baseweb="tab"] {
+/* =========================
+   ABAS (TABS) - CONTRASTE
+   ========================= */
+.stTabs [data-baseweb="tab"]{
   color: #0f172a !important;
   font-weight: 700 !important;
   background: #ffffff !important;
@@ -336,38 +361,77 @@ h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
   border-radius: 12px !important;
   padding: 8px 12px !important;
 }
-.stTabs [aria-selected="true"] {
+.stTabs [aria-selected="true"]{
   outline: 2px solid rgba(37,99,235,0.35) !important;
 }
+@media (max-width: 768px){
+  .stTabs [data-baseweb="tab"]{ font-size: 0.95rem !important; }
+}
 
-/* --- File uploader: fundo claro e texto legível --- */
-[data-testid="stFileUploader"] section {
+/* =========================
+   FILE UPLOADER - LEGÍVEL
+   ========================= */
+[data-testid="stFileUploader"] section{
   background: #ffffff !important;
   border: 1px dashed rgba(15,23,42,0.25) !important;
   border-radius: 14px !important;
 }
-[data-testid="stFileUploader"] * {
+[data-testid="stFileUploader"] *{
   color: #0f172a !important;
   font-weight: 600;
 }
+@media (max-width: 768px){
+  [data-testid="stFileUploader"] *{ font-size: 0.95rem !important; }
+}
 
-/* --- Dataframes compactos --- */
-[data-testid="stDataFrame"] {
+/* =========================
+   DATAFRAMES / TABELAS
+   ========================= */
+[data-testid="stDataFrame"]{
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid rgba(15,23,42,0.10);
+  background: #ffffff;
 }
-thead tr th { font-size: 0.85rem; }
-tbody tr td { font-size: 0.90rem; }
+thead tr th{ font-size: 0.85rem; }
+tbody tr td{ font-size: 0.90rem; }
 
-/* ---- Aumentar tamanhos no mobile ---- */
-@media (max-width: 768px){
-  .stTabs [data-baseweb="tab"] { font-size: 0.95rem !important; }
-  [data-testid="stFileUploader"] * { font-size: 0.95rem !important; }
+/* =========================
+   BOTÕES - CORRIGE TEXTO INVISÍVEL
+   (seu problema da print)
+   ========================= */
+.stButton button,
+button[kind="primary"],
+button[kind="secondary"]{
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid rgba(15,23,42,0.18) !important;
+  border-radius: 12px !important;
+  padding: 0.55rem 0.85rem !important;
 }
+
+.stButton button:hover,
+button[kind="primary"]:hover,
+button[kind="secondary"]:hover{
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+/* garante o texto/ícone dentro do botão */
+.stButton button *{
+  color: #0f172a !important;
+}
+.stButton button svg{
+  fill: #0f172a !important;
+  color: #0f172a !important;
+}
+
+/* =========================
+   PEQUENO POLIMENTO
+   ========================= */
+hr { border-color: rgba(15,23,42,0.10) !important; }
 </style>
 """, unsafe_allow_html=True)
-
 
 # =========================
 # Carregamentos
