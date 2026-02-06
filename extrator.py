@@ -574,16 +574,11 @@ df["is_uber"] = df["descricao"].astype(str).apply(is_uber)
 df["is_99"] = df["descricao"].astype(str).apply(is_99)
 
 # aplica preferências Uber/99 (sem UI)
-uber_pessoa = (prefs_trans.get("uber_pessoa") or "").strip()
+
 uber_cat = (prefs_trans.get("uber_categoria") or "Uber").strip()
-n99_pessoa = (prefs_trans.get("n99_pessoa") or "").strip()
+
 n99_cat = (prefs_trans.get("n99_categoria") or "99").strip()
 
-if uber_pessoa:
-    m = df["is_uber"]
-    df.loc[m, "pessoa"] = uber_pessoa
-    df.loc[m, "categoria"] = uber_cat
-    df.loc[m, "fonte_regra"] = "transporte:uber"
 
 if n99_pessoa:
     m = df["is_99"]
