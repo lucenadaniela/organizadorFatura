@@ -316,6 +316,35 @@ html, body, [class*="css"]  {
 h1 { font-size: 1.35rem; margin-bottom: 0.15rem; color: #0f172a; }
 h2 { font-size: 1.10rem; margin-top: 0.75rem; color: #0f172a; }
 h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
+
+/* =========================
+   ✅ LABELS DOS CAMPOS (invisível no print)
+   ========================= */
+div[data-testid="stWidgetLabel"] > label,
+div[data-testid="stWidgetLabel"] label,
+label[data-testid="stLabel"]{
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+div[data-testid="stWidgetLabel"] p{
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+div[data-testid="stWidgetLabel"] small,
+div[data-testid="stWidgetLabel"] span{
+  color: rgba(15,23,42,0.75) !important;
+  opacity: 1 !important;
+}
+section [data-testid="stWidgetLabel"] label{
+  color: #0f172a !important;
+  opacity: 1 !important;
+}
+/* opcional: aproxima label do campo */
+div[data-testid="stWidgetLabel"]{ margin-bottom: 0.15rem !important; }
+
+/* captions gerais */
 .stCaption, small {
   color: rgba(15,23,42,0.80) !important;
   opacity: 1 !important;
@@ -384,6 +413,19 @@ h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
 }
 
 /* =========================
+   INPUTS / SELECTBOXES - fundo claro + texto escuro
+   ========================= */
+div[data-baseweb="input"] input{
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+div[data-baseweb="select"] > div{
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-radius: 12px !important;
+}
+
+/* =========================
    DATAFRAMES / TABELAS
    ========================= */
 [data-testid="stDataFrame"]{
@@ -397,7 +439,6 @@ tbody tr td{ font-size: 0.90rem; }
 
 /* =========================
    BOTÕES - CORRIGE TEXTO INVISÍVEL
-   (seu problema da print)
    ========================= */
 .stButton button,
 button[kind="primary"],
@@ -426,7 +467,7 @@ button[kind="secondary"]:hover{
 }
 
 /* =========================
-   PEQUENO POLIMENTO
+   POLIMENTO
    ========================= */
 hr { border-color: rgba(15,23,42,0.10) !important; }
 </style>
