@@ -1,7 +1,9 @@
+# extrator.py
 import io
 import json
 import re
 import hashlib
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -13,27 +15,31 @@ try:
 except Exception:
     PDF_OK = False
 
+
 APP_TITLE = "Resumo da fatura (com regras + parcelamento)"
 RULES_FILE = "regras_pagamentos.json"         # regras manuais: keyword + (valor opcional)
 PARCELAS_FILE = "regras_parcelamento.json"    # regras automáticas: id_parcelamento
 
+
 # =========================
 # Helpers
 # =========================
+def norm(s: str) -> str:
+    s = (s or "").strip().lower()
+    return re.sub(r"\s+", " ", s)
 
 def norm_compact(s: str) -> str:
+    """
+    Normaliza agressivo para casar:
+    'mercado livre' com 'MercadoLivre*...'
+    """
     s = (s or "").strip().lower()
     s = unicodedata.normalize("NFD", s)
     s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # remove acentos
     s = re.sub(r"[^a-z0-9]+", "", s)  # remove tudo que não é letra/número
     return s
-    
-def norm(s: str) -> str:
-    s = (s or "").strip().lower()
-    return re.sub(r"\s+", " ", s)
 
 def brl(v: float) -> str:
-    # formata pt-BR sem depender de locale
     s = f"{v:,.2f}"
     return "R$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
 
@@ -57,6 +63,7 @@ def valor_bate(v1: float, v2: float, tol: float = 0.01) -> bool:
         return abs(float(v1) - float(v2)) <= tol
     except Exception:
         return False
+
 
 # =========================
 # Regras (manuais)
@@ -97,6 +104,7 @@ def save_rules(df: pd.DataFrame):
         encoding="utf-8"
     )
 
+
 # =========================
 # Parcelamentos (auto)
 # =========================
@@ -109,7 +117,11 @@ def load_parcelas_rules() -> dict:
     return {}
 
 def save_parcelas_rules(data: dict):
-    Path(PARCELAS_FILE).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(PARCELAS_FILE).write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
 
 # =========================
 # Parcelas
@@ -129,33 +141,23 @@ def gerar_id_parcelamento(desc: str, valor: float):
     base = f"{remover_texto_parcela(desc)}|{float(valor):.2f}".lower()
     return hashlib.md5(base.encode("utf-8")).hexdigest()[:10]
 
+
 # =========================
 # Classificação
 # =========================
-import unicodedata
-import re
-
-def norm_compact(s: str) -> str:
-    s = (s or "").strip().lower()
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # remove acentos
-    s = re.sub(r"[^a-z0-9]+", "", s)  # remove tudo que não é letra/número
-    return s
-
-
 def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, default_person: str, default_cat: str):
-    d = norm(desc)                 # normal com espaços
-    d_comp = norm_compact(desc)    # compacta sem símbolos/espaços
+    d = norm(desc)
+    d_comp = norm_compact(desc)
 
     rules = rules_df.copy().fillna("")
     rules["kw_norm"] = rules["palavra_chave"].astype(str).apply(norm)
-    rules["kw_len"] = rules["kw_norm"].apply(len)
     rules["kw_comp"] = rules["palavra_chave"].astype(str).apply(norm_compact)
+    rules["kw_len"] = rules["kw_norm"].apply(len)
 
     rules["valor_float"] = rules["valor"].apply(parse_valor_regra)
     rules["tem_valor"] = rules["valor_float"].apply(lambda v: 1 if v is not None else 0)
 
-    # prioridade: regra com valor > keyword longa > ordem na tabela
+    # prioridade: regra com valor > keyword longa > ordem na tabela (estável)
     rules = rules.reset_index().rename(columns={"index": "__ordem"})
     rules = rules.sort_values(
         ["tem_valor", "kw_len", "__ordem"],
@@ -170,7 +172,7 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
         if not kw:
             continue
 
-        # casa se bater no texto normal OU na versão compacta
+        # casa se bater no texto normal OU compacto
         if (kw not in d) and (kw_comp not in d_comp):
             continue
 
@@ -183,6 +185,20 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
         return pessoa, categoria, "manual"
 
     return default_person, default_cat, "fallback"
+
+def classify(desc: str, valor: float, id_parc: str, regras_parc: dict,
+             rules_df: pd.DataFrame, default_person: str, default_cat: str):
+    # 1) parcelamento automático tem prioridade
+    if id_parc and id_parc in regras_parc and not regras_parc[id_parc].get("concluido", False):
+        r = regras_parc[id_parc]
+        return (
+            r.get("pessoa", default_person),
+            r.get("categoria", default_cat),
+            "parcelamento:auto"
+        )
+    # 2) regras manuais
+    return classify_manual(desc, valor, rules_df, default_person, default_cat)
+
 
 # =========================
 # Parser PDF Nubank (texto selecionável)
@@ -215,6 +231,7 @@ def parse_nubank_pdf(file_bytes: bytes, ano: int):
         df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.date.astype(str)
     return df
 
+
 # =========================
 # App
 # =========================
@@ -224,7 +241,6 @@ st.title(APP_TITLE)
 rules = load_rules()
 regras_parc = load_parcelas_rules()
 
-# ---- topo: upload + config mínima (em expander) ----
 with st.expander("⚙️ Configurações", expanded=False):
     default_person = st.text_input("Pessoa padrão (se não casar regra)", value="Pendente")
     default_cat = st.text_input("Categoria padrão (se não casar regra)", value="Revisar")
@@ -240,17 +256,9 @@ with st.expander("⚙️ Configurações", expanded=False):
 
 up = st.file_uploader("Upload PDF (Nubank texto selecionável) ou CSV (data, descricao, valor)", type=["pdf", "csv"])
 
-# Defaults caso expander fechado antes (evita NameError)
-if "default_person" not in locals(): default_person = "Pendente"
-if "default_cat" not in locals(): default_cat = "Revisar"
-if "ano" not in locals(): ano = 2026
-if "mostrar_categoria" not in locals(): mostrar_categoria = True
-if "mostrar_pendencias" not in locals(): mostrar_pendencias = True
-if "mostrar_detalhes" not in locals(): mostrar_detalhes = False
-
-# ---- Aba escondida: Regras ----
+# Expander: Regras
 with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
-    st.caption("Você pode cadastrar palavra-chave + (valor opcional) pra diferenciar compras na mesma loja.")
+    st.caption("Dica: deixe 'valor' vazio para valer para qualquer valor. Use valor só para diferenciar pessoas na mesma loja.")
     rules_edited = st.data_editor(
         rules,
         use_container_width=True,
@@ -274,11 +282,8 @@ with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
             Path(RULES_FILE).unlink(missing_ok=True)
             st.warning("Arquivo removido. Recarregue (F5).")
 
-# =========================
 # Processamento
-# =========================
 if up:
-    # carregar dataframe
     if up.name.lower().endswith(".csv"):
         df = pd.read_csv(up)
         df.columns = [c.strip().lower() for c in df.columns]
@@ -302,7 +307,6 @@ if up:
         st.warning("Não consegui extrair lançamentos do arquivo.")
         st.stop()
 
-    # enriquecer parcelas
     parc = df["descricao"].astype(str).apply(extrair_parcela)
     df["parcela_txt"] = parc.apply(lambda x: x[0])
     df["parcela_atual"] = parc.apply(lambda x: x[1])
@@ -310,20 +314,25 @@ if up:
     df["desc_base"] = df["descricao"].astype(str).apply(remover_texto_parcela)
     df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
 
-    # classificar
     rules_live = rules_edited.fillna("") if "rules_edited" in locals() else rules.fillna("")
     pessoas, cats, fonte = [], [], []
     for _, r in df.iterrows():
-        p, c, f = classify(str(r["descricao"]), float(r["valor"]), r["id_parcelamento"],
-                           regras_parc, rules_live, default_person, default_cat)
+        p, c, f = classify(
+            str(r["descricao"]),
+            float(r["valor"]),
+            r["id_parcelamento"],
+            regras_parc,
+            rules_live,
+            default_person,
+            default_cat
+        )
         pessoas.append(p); cats.append(c); fonte.append(f)
+
     df["pessoa"] = pessoas
     df["categoria"] = cats
     df["fonte_regra"] = fonte
 
-    # =========================
-    # ✅ TELA PRINCIPAL: RESUMO
-    # =========================
+    # ---- RESUMO (tela principal) ----
     st.divider()
     total_geral = float(df["valor"].sum())
     st.metric("Total geral", brl(total_geral))
@@ -348,11 +357,13 @@ if up:
         if pend.empty:
             st.success("Nada pendente 🎯")
         else:
-            st.dataframe(pend[["data", "descricao", "valor", "pessoa", "categoria", "fonte_regra"]], use_container_width=True, height=260)
+            st.dataframe(
+                pend[["data", "descricao", "valor", "pessoa", "categoria", "fonte_regra"]],
+                use_container_width=True,
+                height=260
+            )
 
-    # =========================
-    # Ensinar parcelamentos (expander)
-    # =========================
+    # ---- Ensinar parcelamentos ----
     with st.expander("📌 Ensinar parcelamentos (aplica até a última parcela)", expanded=False):
         df_parc = df[df["parcela_total"].notna()].copy()
         if df_parc.empty:
@@ -394,13 +405,12 @@ if up:
                         save_parcelas_rules(regras_parc)
                         st.warning("Regra removida.")
 
-    # =========================
-    # Detalhes (expander)
-    # =========================
     if mostrar_detalhes:
         with st.expander("🧾 Detalhes (lançamentos)", expanded=False):
-            st.dataframe(df[["data","descricao","valor","pessoa","categoria","fonte_regra","parcela_txt","id_parcelamento"]],
-                         use_container_width=True, height=420)
-
+            st.dataframe(
+                df[["data","descricao","valor","pessoa","categoria","fonte_regra","parcela_txt","id_parcelamento"]],
+                use_container_width=True,
+                height=420
+            )
 else:
     st.info("Suba uma fatura para ver o resumo.")
