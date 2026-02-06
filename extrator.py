@@ -16,7 +16,7 @@ except Exception:
     PDF_OK = False
 
 
-APP_TITLE = "Resumo da fatura (com regras + parcelamento)"
+APP_TITLE = "Resumo da fatura (regras + parcelamento)"
 RULES_FILE = "regras_pagamentos.json"
 PARCELAS_FILE = "regras_parcelamento.json"
 PREFS_TRANS_FILE = "preferencias_transporte.json"     # uber/99 por pessoa (sem UI)
@@ -192,6 +192,7 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
     rules["valor_float"] = rules["valor"].apply(parse_valor_regra)
     rules["tem_valor"] = rules["valor_float"].apply(lambda v: 1 if v is not None else 0)
 
+    # prioridade: regra com valor > keyword longa > ordem na tabela
     rules = rules.reset_index().rename(columns={"index": "__ordem"})
     rules = rules.sort_values(
         ["tem_valor", "kw_len", "__ordem"],
@@ -221,6 +222,7 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
 
 def classify(desc: str, valor: float, id_parc: str, regras_parc: dict,
              rules_df: pd.DataFrame, default_person: str, default_cat: str):
+    # prioridade: parcelamento salvo
     if id_parc and id_parc in regras_parc and not regras_parc[id_parc].get("concluido", False):
         r = regras_parc[id_parc]
         return (
@@ -280,17 +282,85 @@ def parse_nubank_pdf(file_bytes: bytes, ano: int):
 
 
 # =========================
-# App
+# UI: Config + CSS (Tema Claro)
 # =========================
-st.set_page_config(page_title=APP_TITLE, layout="wide")
-st.title(APP_TITLE)
+st.set_page_config(
+    page_title=APP_TITLE,
+    layout="wide",
+    initial_sidebar_state="collapsed"  # ótimo pro celular
+)
 
+st.markdown("""
+<style>
+/* --- Layout geral (claro) --- */
+html, body, [class*="css"]  { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+.block-container { padding-top: 0.8rem; padding-bottom: 2rem; max-width: 1050px; }
+@media (max-width: 768px){
+  .block-container { padding-left: 0.8rem; padding-right: 0.8rem; }
+}
+
+/* --- Fundo e textos (claro) --- */
+.stApp {
+  background: linear-gradient(180deg, #fbfbfd 0%, #f3f4f6 100%);
+  color: #0f172a;
+}
+h1 { font-size: 1.35rem; margin-bottom: 0.15rem; color: #0f172a; }
+h2 { font-size: 1.10rem; margin-top: 0.75rem; color: #0f172a; }
+h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
+.stCaption { color: rgba(15, 23, 42, 0.75); }
+
+/* --- Cards --- */
+.card {
+  background: #ffffff;
+  border: 1px solid rgba(15,23,42,0.10);
+  border-radius: 16px;
+  padding: 14px 14px;
+  margin: 8px 0;
+  box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+}
+.card-title { font-size: 0.85rem; color: rgba(15,23,42,0.70); margin-bottom: 8px; }
+.card-big { font-size: 1.45rem; font-weight: 750; color: #0f172a; letter-spacing: 0.2px; }
+.card-sub { font-size: 0.82rem; color: rgba(15,23,42,0.65); margin-top: 6px; }
+
+/* --- Dataframes compactos --- */
+[data-testid="stDataFrame"] {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(15,23,42,0.10);
+}
+thead tr th { font-size: 0.85rem; }
+tbody tr td { font-size: 0.90rem; }
+
+/* --- Botões --- */
+.stButton button {
+  border-radius: 12px !important;
+  padding: 0.55rem 0.85rem !important;
+  border: 1px solid rgba(15,23,42,0.15) !important;
+  background: #ffffff !important;
+}
+.stButton button:hover { background: #f8fafc !important; }
+
+/* --- Abas --- */
+.stTabs [data-baseweb="tab"] {
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.title(APP_TITLE)
+st.caption("Envie o PDF do Nubank (texto selecionável) ou CSV (data, descricao, valor).")
+
+
+# =========================
+# Carregamentos
+# =========================
 rules = load_rules()
 regras_parc = load_parcelas_rules()
 prefs_trans = load_prefs_transporte()
 overrides = load_overrides()
 
-# ✅ Defaults para Uber/99 se não existir arquivo (sem UI)
+# Defaults Uber/99 (sem UI). Se quiser mudar: edite preferencias_transporte.json no repo.
 if not prefs_trans:
     prefs_trans = {
         "uber_pessoa": "Daiane",
@@ -300,27 +370,35 @@ if not prefs_trans:
     }
     save_prefs_transporte(prefs_trans)
 
-with st.expander("⚙️ Configurações", expanded=False):
-    default_person = st.text_input("Pessoa padrão (se não casar regra)", value="Pendente")
-    default_cat = st.text_input("Categoria padrão (se não casar regra)", value="Revisar")
-    ano = st.number_input("Ano da fatura (PDF)", min_value=2020, max_value=2100, value=2026, step=1)
+# Sidebar: Configurações (mobile-friendly)
+st.sidebar.header("⚙️ Configurações")
+default_person = st.sidebar.text_input("Pessoa padrão (sem regra)", value="Pendente")
+default_cat = st.sidebar.text_input("Categoria padrão (sem regra)", value="Revisar")
+ano = st.sidebar.number_input("Ano da fatura (PDF)", min_value=2020, max_value=2100, value=2026, step=1)
+mostrar_categoria = st.sidebar.checkbox("Mostrar resumo por categoria", value=True)
+mostrar_detalhes = st.sidebar.checkbox("Mostrar detalhes", value=True)
 
-    colA, colB, colC = st.columns(3)
-    with colA:
-        mostrar_categoria = st.checkbox("Mostrar resumo por categoria", value=True)
-    with colB:
-        mostrar_pendencias = st.checkbox("Mostrar pendências editáveis", value=True)
-    with colC:
-        mostrar_detalhes = st.checkbox("Mostrar detalhes", value=True)
+st.sidebar.caption("Uber/99 vêm de preferencias_transporte.json (sem UI).")
+st.sidebar.caption("Pendências editadas salvam em overrides_lancamentos.json.")
 
-up = st.file_uploader("Upload PDF (Nubank texto selecionável) ou CSV (data, descricao, valor)", type=["pdf", "csv"])
+
+# Upload
+up = st.file_uploader("📤 Upload", type=["pdf", "csv"])
 
 
 # =========================
-# Regras editor
+# App: Abas
 # =========================
-with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
-    st.caption("Deixe 'valor' vazio para valer para qualquer valor. Use valor só para diferenciar pessoas na mesma loja.")
+tab_resumo, tab_pend, tab_regras, tab_parc, tab_det = st.tabs(
+    ["📌 Resumo", "📝 Pendências", "🧠 Regras", "💳 Parcelas", "🧾 Detalhes"]
+)
+
+# =========================
+# Regras (tab própria)
+# =========================
+with tab_regras:
+    st.subheader("Regras")
+    st.caption("Deixe 'valor' vazio para valer para qualquer valor. Use valor só para diferenciar compras na mesma loja.")
     rules_edited = st.data_editor(
         rules,
         use_container_width=True,
@@ -334,13 +412,14 @@ with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
         },
         key="rules_editor"
     )
+
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("💾 Salvar regras"):
+        if st.button("💾 Salvar regras", key="save_rules_btn"):
             save_rules(rules_edited)
-            st.success("Regras salvas.")
+            st.success("Regras salvas ✅")
     with c2:
-        if st.button("🗑️ Apagar regras (reset)"):
+        if st.button("🗑️ Resetar regras (apagar arquivo)", key="reset_rules_btn"):
             Path(RULES_FILE).unlink(missing_ok=True)
             st.warning("Arquivo removido. Recarregue (F5).")
 
@@ -348,117 +427,147 @@ with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
 # =========================
 # Processamento
 # =========================
-if up:
-    # carregar_toggle] 
-    # carregar dataframe
-    if up.name.lower().endswith(".csv"):
-        df = pd.read_csv(up)
-        df.columns = [c.strip().lower() for c in df.columns]
-        if "descrição" in df.columns and "descricao" not in df.columns:
-            df["descricao"] = df["descrição"]
-        if not {"data", "descricao", "valor"}.issubset(set(df.columns)):
-            st.error("CSV precisa ter colunas: data, descricao, valor")
-            st.stop()
-        df = df[["data", "descricao", "valor"]].copy()
-        df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
-        df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.date.astype(str)
-        df = df.dropna(subset=["descricao", "valor"])
-    else:
-        try:
-            df = parse_nubank_pdf(up.getvalue(), ano=ano)
-        except Exception as e:
-            st.error(f"Erro lendo PDF: {e}")
-            st.stop()
+if not up:
+    with tab_resumo:
+        st.info("Suba uma fatura para ver o resumo.")
+    with tab_pend:
+        st.info("Suba uma fatura para ver pendências.")
+    with tab_parc:
+        st.info("Suba uma fatura para gerenciar parcelamentos.")
+    with tab_det:
+        st.info("Suba uma fatura para ver detalhes.")
+    st.stop()
 
-    if df.empty:
-        st.warning("Não consegui extrair lançamentos do arquivo.")
+# carregar dataframe
+if up.name.lower().endswith(".csv"):
+    df = pd.read_csv(up)
+    df.columns = [c.strip().lower() for c in df.columns]
+    if "descrição" in df.columns and "descricao" not in df.columns:
+        df["descricao"] = df["descrição"]
+    if not {"data", "descricao", "valor"}.issubset(set(df.columns)):
+        st.error("CSV precisa ter colunas: data, descricao, valor")
+        st.stop()
+    df = df[["data", "descricao", "valor"]].copy()
+    df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
+    df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.date.astype(str)
+    df = df.dropna(subset=["descricao", "valor"])
+else:
+    try:
+        df = parse_nubank_pdf(up.getvalue(), ano=ano)
+    except Exception as e:
+        st.error(f"Erro lendo PDF: {e}")
         st.stop()
 
-    # enriquecer parcelas
-    parc = df["descricao"].astype(str).apply(extrair_parcela)
-    df["parcela_txt"] = parc.apply(lambda x: x[0])
-    df["parcela_atual"] = parc.apply(lambda x: x[1])
-    df["parcela_total"] = parc.apply(lambda x: x[2])
-    df["desc_base"] = df["descricao"].astype(str).apply(remover_texto_parcela)
-    df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
+if df.empty:
+    st.warning("Não consegui extrair lançamentos do arquivo.")
+    st.stop()
 
-    # id do lançamento (para overrides)
-    df["lanc_id"] = df.apply(lambda r: lanc_id(r["data"], r["descricao"], r["valor"]), axis=1)
+# enriquecer parcelas
+parc = df["descricao"].astype(str).apply(extrair_parcela)
+df["parcela_txt"] = parc.apply(lambda x: x[0])
+df["parcela_atual"] = parc.apply(lambda x: x[1])
+df["parcela_total"] = parc.apply(lambda x: x[2])
+df["desc_base"] = df["descricao"].astype(str).apply(remover_texto_parcela)
+df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
 
-    # classificar (regras + parcelamento)
-    rules_live = rules_edited.fillna("") if "rules_edited" in locals() else rules.fillna("")
-    pessoas, cats, fonte = [], [], []
-    for _, r in df.iterrows():
-        p, c, f = classify(
-            str(r["descricao"]),
-            float(r["valor"]),
-            r["id_parcelamento"],
-            regras_parc,
-            rules_live,
-            default_person,
-            default_cat
-        )
-        pessoas.append(p); cats.append(c); fonte.append(f)
-    df["pessoa"] = pessoas
-    df["categoria"] = cats
-    df["fonte_regra"] = fonte
+# id do lançamento (para overrides)
+df["lanc_id"] = df.apply(lambda r: lanc_id(r["data"], r["descricao"], r["valor"]), axis=1)
 
-    # flags uber/99
-    df["is_uber"] = df["descricao"].astype(str).apply(is_uber)
-    df["is_99"] = df["descricao"].astype(str).apply(is_99)
+# classificar (regras + parcelamento)
+rules_live = rules_edited.fillna("") if "rules_edited" in locals() else rules.fillna("")
+pessoas, cats, fonte = [], [], []
+for _, r in df.iterrows():
+    p, c, f = classify(
+        str(r["descricao"]),
+        float(r["valor"]),
+        r["id_parcelamento"],
+        regras_parc,
+        rules_live,
+        default_person,
+        default_cat
+    )
+    pessoas.append(p); cats.append(c); fonte.append(f)
+df["pessoa"] = pessoas
+df["categoria"] = cats
+df["fonte_regra"] = fonte
 
-    # ✅ aplica preferências de Uber/99 (sem UI)
-    uber_pessoa = (prefs_trans.get("uber_pessoa") or "").strip()
-    uber_cat = (prefs_trans.get("uber_categoria") or "Uber").strip()
-    n99_pessoa = (prefs_trans.get("n99_pessoa") or "").strip()
-    n99_cat = (prefs_trans.get("n99_categoria") or "99").strip()
+# flags uber/99
+df["is_uber"] = df["descricao"].astype(str).apply(is_uber)
+df["is_99"] = df["descricao"].astype(str).apply(is_99)
 
-    if uber_pessoa:
-        m = df["is_uber"]
-        df.loc[m, "pessoa"] = uber_pessoa
-        df.loc[m, "categoria"] = uber_cat
-        df.loc[m, "fonte_regra"] = "transporte:uber"
+# aplica preferências Uber/99 (sem UI)
+uber_pessoa = (prefs_trans.get("uber_pessoa") or "").strip()
+uber_cat = (prefs_trans.get("uber_categoria") or "Uber").strip()
+n99_pessoa = (prefs_trans.get("n99_pessoa") or "").strip()
+n99_cat = (prefs_trans.get("n99_categoria") or "99").strip()
 
-    if n99_pessoa:
-        m = df["is_99"]
-        df.loc[m, "pessoa"] = n99_pessoa
-        df.loc[m, "categoria"] = n99_cat
-        df.loc[m, "fonte_regra"] = "transporte:99"
+if uber_pessoa:
+    m = df["is_uber"]
+    df.loc[m, "pessoa"] = uber_pessoa
+    df.loc[m, "categoria"] = uber_cat
+    df.loc[m, "fonte_regra"] = "transporte:uber"
 
-    # ✅ aplica overrides manuais (prioridade máxima)
-    if overrides:
-        m = df["lanc_id"].isin(overrides.keys())
-        if m.any():
-            df.loc[m, "pessoa"] = df.loc[m, "lanc_id"].map(lambda k: overrides[k].get("pessoa"))
-            df.loc[m, "categoria"] = df.loc[m, "lanc_id"].map(lambda k: overrides[k].get("categoria"))
-            df.loc[m, "fonte_regra"] = "override:manual"
+if n99_pessoa:
+    m = df["is_99"]
+    df.loc[m, "pessoa"] = n99_pessoa
+    df.loc[m, "categoria"] = n99_cat
+    df.loc[m, "fonte_regra"] = "transporte:99"
 
-    # =========================
-    # RESUMO
-    # =========================
-    st.divider()
+# aplica overrides manuais (prioridade máxima)
+if overrides:
+    m = df["lanc_id"].isin(overrides.keys())
+    if m.any():
+        df.loc[m, "pessoa"] = df.loc[m, "lanc_id"].map(lambda k: overrides[k].get("pessoa"))
+        df.loc[m, "categoria"] = df.loc[m, "lanc_id"].map(lambda k: overrides[k].get("categoria"))
+        df.loc[m, "fonte_regra"] = "override:manual"
+
+
+# =========================
+# TAB: RESUMO
+# =========================
+with tab_resumo:
     total_geral = float(df["valor"].sum())
-    st.metric("Total geral", brl(total_geral))
+    st.markdown(f"""
+    <div class="card">
+      <div class="card-title">Total geral</div>
+      <div class="card-big">{brl(total_geral)}</div>
+      <div class="card-sub">Lançamentos: {len(df)}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Totais por pessoa
+    # Totais por pessoa (no celular: 2 colunas)
     totais = df.groupby("pessoa", as_index=False)["valor"].sum().sort_values("valor", ascending=False)
     st.subheader("Totais por pessoa")
-    cols = st.columns(min(6, max(1, len(totais))))
+    ncols = 2  # mobile friendly
+    cols = st.columns(ncols)
     for i, row in enumerate(totais.itertuples(index=False)):
-        cols[i % len(cols)].metric(str(row.pessoa), brl(float(row.valor)))
+        cols[i % ncols].markdown(
+            f"""<div class="card">
+                  <div class="card-title">{row.pessoa}</div>
+                  <div class="card-big">{brl(float(row.valor))}</div>
+                </div>""",
+            unsafe_allow_html=True
+        )
 
     # Transporte (contagem + total)
-    st.subheader("Transporte (contagem + total)")
+    st.subheader("Transporte")
     u_total = float(df.loc[df["is_uber"], "valor"].sum())
     u_qtd = int(df["is_uber"].sum())
     n_total = float(df.loc[df["is_99"], "valor"].sum())
     n_qtd = int(df["is_99"].sum())
 
     cU, c9 = st.columns(2)
-    cU.metric("Uber — total", brl(u_total))
-    cU.caption(f"Quantidade: {u_qtd} | Pessoa: {uber_pessoa or 'não definida'}")
-    c9.metric("99 — total", brl(n_total))
-    c9.caption(f"Quantidade: {n_qtd} | Pessoa: {n99_pessoa or 'não definida'}")
+    cU.markdown(f"""<div class="card">
+        <div class="card-title">Uber</div>
+        <div class="card-big">{brl(u_total)}</div>
+        <div class="card-sub">Qtd: {u_qtd} • Pessoa: {uber_pessoa or "—"}</div>
+    </div>""", unsafe_allow_html=True)
+
+    c9.markdown(f"""<div class="card">
+        <div class="card-title">99</div>
+        <div class="card-big">{brl(n_total)}</div>
+        <div class="card-sub">Qtd: {n_qtd} • Pessoa: {n99_pessoa or "—"}</div>
+    </div>""", unsafe_allow_html=True)
 
     if mostrar_categoria:
         st.subheader("Resumo por categoria")
@@ -466,96 +575,113 @@ if up:
             df.pivot_table(index="pessoa", columns="categoria", values="valor", aggfunc="sum", fill_value=0)
             .sort_index()
         )
-        st.dataframe(resumo_cat, use_container_width=True)
+        st.dataframe(resumo_cat, use_container_width=True, height=320)
 
-    # =========================
-    # Pendências editáveis + salvar
-    # =========================
-    if mostrar_pendencias:
-        st.subheader("Pendências (editável)")
-        pend = df[(df["pessoa"].str.lower() == "pendente") | (df["categoria"].str.lower() == "revisar")].copy()
 
-        if pend.empty:
-            st.success("Nada pendente 🎯")
-        else:
-            pessoas_opts = sorted(set([str(x) for x in df["pessoa"].dropna().unique().tolist()] + ["Pendente"]))
-            cats_opts = sorted(set([str(x) for x in df["categoria"].dropna().unique().tolist()] + ["Revisar"]))
+# =========================
+# TAB: PENDÊNCIAS (editável)
+# =========================
+with tab_pend:
+    st.subheader("Pendências (editável)")
+    st.caption("Edite pessoa/categoria e clique em salvar. Isso fica gravado em overrides_lancamentos.json.")
+    pend = df[(df["pessoa"].str.lower() == "pendente") | (df["categoria"].str.lower() == "revisar")].copy()
 
-            pend_edit = st.data_editor(
-                pend[["data", "descricao", "valor", "pessoa", "categoria", "lanc_id", "fonte_regra"]],
-                use_container_width=True,
-                hide_index=True,
-                disabled=["data", "descricao", "valor", "lanc_id", "fonte_regra"],
-                column_config={
-                    "pessoa": st.column_config.SelectboxColumn("pessoa", options=pessoas_opts),
-                    "categoria": st.column_config.SelectboxColumn("categoria", options=cats_opts),
-                },
-                key="pend_editor"
-            )
+    if pend.empty:
+        st.success("Nada pendente 🎯")
+    else:
+        pessoas_opts = sorted(set([str(x) for x in df["pessoa"].dropna().unique().tolist()] + ["Pendente"]))
+        cats_opts = sorted(set([str(x) for x in df["categoria"].dropna().unique().tolist()] + ["Revisar"]))
 
-            if st.button("💾 Salvar alterações das pendências"):
-                for _, r in pend_edit.iterrows():
-                    overrides[str(r["lanc_id"])] = {
-                        "pessoa": str(r["pessoa"]),
-                        "categoria": str(r["categoria"]),
-                    }
-                save_overrides(overrides)
-                st.success("Salvo! ✅")
-                st.rerun()
+        pend_edit = st.data_editor(
+            pend[["data", "descricao", "valor", "pessoa", "categoria", "lanc_id", "fonte_regra"]],
+            use_container_width=True,
+            hide_index=True,
+            disabled=["data", "descricao", "valor", "lanc_id", "fonte_regra"],
+            column_config={
+                "pessoa": st.column_config.SelectboxColumn("pessoa", options=pessoas_opts),
+                "categoria": st.column_config.SelectboxColumn("categoria", options=cats_opts),
+            },
+            height=420,
+            key="pend_editor"
+        )
 
-    # =========================
-    # Parcelamentos
-    # =========================
-    with st.expander("📌 Gravar parcelamentos (aplica até a última parcela)", expanded=False):
-        df_parc = df[df["parcela_total"].notna()].copy()
-        if df_parc.empty:
-            st.info("Nenhum parcelado detectado nesta fatura.")
-        else:
-            df_parc["label"] = df_parc.apply(
-                lambda r: f"{r['id_parcelamento']} | {r['desc_base'][:45]} | {brl(float(r['valor']))} | {r['parcela_txt']}",
-                axis=1
-            )
-            sel = st.selectbox("Escolha o parcelamento", options=df_parc["label"].unique().tolist())
-            sel_id = sel.split(" | ")[0].strip()
+        if st.button("💾 Salvar alterações das pendências", key="save_pend_btn"):
+            for _, r in pend_edit.iterrows():
+                overrides[str(r["lanc_id"])] = {
+                    "pessoa": str(r["pessoa"]),
+                    "categoria": str(r["categoria"]),
+                }
+            save_overrides(overrides)
+            st.success("Salvo! ✅")
+            st.rerun()
 
-            ex = df_parc[df_parc["id_parcelamento"] == sel_id].iloc[0]
-            pessoa_sel = st.text_input("Pessoa (para este parcelamento)", value=str(ex["pessoa"]))
-            cat_sel = st.text_input("Categoria (para este parcelamento)", value=str(ex["categoria"]))
 
-            cA, cB, cC = st.columns(3)
-            with cA:
-                if st.button("✅ Salvar para este parcelamento"):
-                    regras_parc[sel_id] = {
-                        "pessoa": pessoa_sel,
-                        "categoria": cat_sel,
-                        "parcelas_total": int(ex["parcela_total"]) if pd.notna(ex["parcela_total"]) else None,
-                        "concluido": False,
-                        "desc_base": str(ex["desc_base"]),
-                    }
+# =========================
+# TAB: PARCELAS
+# =========================
+with tab_parc:
+    st.subheader("Parcelamentos")
+    st.caption("Quando você ensina 1x, as próximas parcelas caem automático pelo id do parcelamento.")
+    df_parc = df[df["parcela_total"].notna()].copy()
+
+    if df_parc.empty:
+        st.info("Nenhum parcelado detectado nesta fatura.")
+    else:
+        df_parc["label"] = df_parc.apply(
+            lambda r: f"{r['id_parcelamento']} | {r['desc_base'][:45]} | {brl(float(r['valor']))} | {r['parcela_txt']}",
+            axis=1
+        )
+        sel = st.selectbox("Escolha o parcelamento", options=df_parc["label"].unique().tolist())
+        sel_id = sel.split(" | ")[0].strip()
+
+        ex = df_parc[df_parc["id_parcelamento"] == sel_id].iloc[0]
+        pessoa_sel = st.text_input("Pessoa (para este parcelamento)", value=str(ex["pessoa"]))
+        cat_sel = st.text_input("Categoria (para este parcelamento)", value=str(ex["categoria"]))
+
+        cA, cB, cC = st.columns(3)
+        with cA:
+            if st.button("✅ Salvar", key="save_parc_btn"):
+                regras_parc[sel_id] = {
+                    "pessoa": pessoa_sel,
+                    "categoria": cat_sel,
+                    "parcelas_total": int(ex["parcela_total"]) if pd.notna(ex["parcela_total"]) else None,
+                    "concluido": False,
+                    "desc_base": str(ex["desc_base"]),
+                }
+                save_parcelas_rules(regras_parc)
+                st.success("Parcelamento salvo! Próximas parcelas vão cair automático ✅")
+        with cB:
+            if st.button("🧾 Concluir", key="finish_parc_btn"):
+                if sel_id in regras_parc:
+                    regras_parc[sel_id]["concluido"] = True
                     save_parcelas_rules(regras_parc)
-                    st.success("Parcelamento salvo! Próximas parcelas vão cair automático.")
-            with cB:
-                if st.button("🧾 Marcar como concluído"):
-                    if sel_id in regras_parc:
-                        regras_parc[sel_id]["concluido"] = True
-                        save_parcelas_rules(regras_parc)
-                        st.success("Marcado como concluído.")
-            with cC:
-                if st.button("🗑️ Remover regra do parcelamento"):
-                    if sel_id in regras_parc:
-                        regras_parc.pop(sel_id, None)
-                        save_parcelas_rules(regras_parc)
-                        st.warning("Regra removida.")
+                    st.success("Marcado como concluído.")
+        with cC:
+            if st.button("🗑️ Remover", key="rm_parc_btn"):
+                if sel_id in regras_parc:
+                    regras_parc.pop(sel_id, None)
+                    save_parcelas_rules(regras_parc)
+                    st.warning("Regra removida.")
 
-    # =========================
-    # Detalhes
-    # =========================
-    if mostrar_detalhes:
-        with st.expander("🧾 Detalhes (lançamentos)", expanded=True):
-            st.dataframe(
-                df[["data","descricao","valor","pessoa","categoria","fonte_regra","parcela_txt","id_parcelamento","lanc_id"]],
-                use_container_width=True,
-                height=420
-            )
-else:
-    st.info("Suba uma fatura para ver o resumo.")
+        st.divider()
+        st.subheader("Parcelados nesta fatura")
+        st.dataframe(
+            df_parc[["data", "descricao", "valor", "parcela_txt", "id_parcelamento", "pessoa", "categoria", "fonte_regra"]],
+            use_container_width=True,
+            height=320
+        )
+
+
+# =========================
+# TAB: DETALHES
+# =========================
+with tab_det:
+    st.subheader("Detalhes")
+    if not mostrar_detalhes:
+        st.info("Ative 'Mostrar detalhes' no menu ⚙️ (sidebar).")
+    else:
+        st.dataframe(
+            df[["data","descricao","valor","pessoa","categoria","fonte_regra","parcela_txt","id_parcelamento","lanc_id"]],
+            use_container_width=True,
+            height=520
+        )
