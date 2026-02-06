@@ -127,7 +127,6 @@ def load_rules() -> pd.DataFrame:
         {"tipo": "fixo", "palavra_chave": "academia",        "valor": "149,9", "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "academia",        "valor": "133",   "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "nucel",           "valor": "30",    "pessoa": "Yves",   "categoria": "Fixos"},
-
         {"tipo": "variavel", "palavra_chave": "shein",         "valor": "136,50", "pessoa": "Maria",  "categoria": "Roupas"},
         {"tipo": "variavel", "palavra_chave": "mercado livre", "valor": "55,87",  "pessoa": "Maria",  "categoria": "Carregador"},
     ]).fillna("")
@@ -444,9 +443,7 @@ overrides = load_overrides()
 # Defaults Uber/99 (sem UI). Se quiser mudar: edite preferencias_transporte.json no repo.
 if not prefs_trans:
     prefs_trans = {
-        "uber_pessoa": "Daiane",
         "uber_categoria": "Uber",
-        "n99_pessoa": "Daiane",
         "n99_categoria": "99",
     }
     save_prefs_transporte(prefs_trans)
