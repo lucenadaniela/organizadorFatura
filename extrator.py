@@ -307,7 +307,12 @@ html, body, [class*="css"]  { font-family: ui-sans-serif, system-ui, -apple-syst
 h1 { font-size: 1.35rem; margin-bottom: 0.15rem; color: #0f172a; }
 h2 { font-size: 1.10rem; margin-top: 0.75rem; color: #0f172a; }
 h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
-.stCaption { color: rgba(15, 23, 42, 0.75); }
+.stCaption { color: rgba(15, 23, 42, 0.80) !important; opacity: 1 !important; }
+
+/* ---- Melhorar contraste geral de textos ---- */
+.stApp, .stMarkdown, label, p, span, div {
+  color: #0f172a !important;
+}
 
 /* --- Cards --- */
 .card {
@@ -322,6 +327,30 @@ h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
 .card-big { font-size: 1.45rem; font-weight: 750; color: #0f172a; letter-spacing: 0.2px; }
 .card-sub { font-size: 0.82rem; color: rgba(15,23,42,0.65); margin-top: 6px; }
 
+/* --- Abas: deixar legível ---- */
+.stTabs [data-baseweb="tab"] {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(15,23,42,0.15) !important;
+  border-radius: 12px !important;
+  padding: 8px 12px !important;
+}
+.stTabs [aria-selected="true"] {
+  outline: 2px solid rgba(37,99,235,0.35) !important;
+}
+
+/* --- File uploader: fundo claro e texto legível --- */
+[data-testid="stFileUploader"] section {
+  background: #ffffff !important;
+  border: 1px dashed rgba(15,23,42,0.25) !important;
+  border-radius: 14px !important;
+}
+[data-testid="stFileUploader"] * {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
 /* --- Dataframes compactos --- */
 [data-testid="stDataFrame"] {
   border-radius: 14px;
@@ -331,61 +360,13 @@ h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
 thead tr th { font-size: 0.85rem; }
 tbody tr td { font-size: 0.90rem; }
 
-/* --- Botões --- */
-.stButton button {
-  border-radius: 12px !important;
-  padding: 0.55rem 0.85rem !important;
-  border: 1px solid rgba(15,23,42,0.15) !important;
-  background: #ffffff !important;
-}
-.stButton button:hover { background: #f8fafc !important; }
-
-/* --- Abas --- */
-.stTabs [data-baseweb="tab"] {
-  border-radius: 12px;
-  padding: 8px 12px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-st.title(APP_TITLE)
-st.caption("Envie o PDF do Nubank (texto selecionável) ou CSV (data, descricao, valor).")
-
-/* ---- Melhorar contraste geral de textos ---- */
-.stApp, .stMarkdown, .stCaption, label, p, span, div {
-  color: #0f172a !important;
-}
-
-/* ---- Abas: deixar legível ---- */
-.stTabs [data-baseweb="tab"] {
-  color: #0f172a !important;
-  font-weight: 700 !important;
-  background: #ffffff !important;
-  border: 1px solid rgba(15,23,42,0.15) !important;
-}
-
-.stTabs [aria-selected="true"] {
-  outline: 2px solid rgba(37,99,235,0.35) !important;
-}
-
-/* ---- File uploader: fundo claro e texto legível ---- */
-[data-testid="stFileUploader"] section {
-  background: #ffffff !important;
-  border: 1px dashed rgba(15,23,42,0.25) !important;
-  border-radius: 14px !important;
-}
-
-/* Texto “Drag and drop…” */
-[data-testid="stFileUploader"] * {
-  color: #0f172a !important;
-  font-weight: 600;
-}
-
 /* ---- Aumentar tamanhos no mobile ---- */
 @media (max-width: 768px){
   .stTabs [data-baseweb="tab"] { font-size: 0.95rem !important; }
   [data-testid="stFileUploader"] * { font-size: 0.95rem !important; }
 }
+</style>
+""", unsafe_allow_html=True)
 
 
 # =========================
