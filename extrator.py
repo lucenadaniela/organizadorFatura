@@ -575,9 +575,14 @@ df["is_99"] = df["descricao"].astype(str).apply(is_99)
 
 # aplica preferências Uber/99 (sem UI)
 
-uber_cat = (prefs_trans.get("uber_categoria") or "Uber").strip()
+# aplica preferências Uber/99 (sem UI)
+prefs_trans = load_prefs_transporte()  # se já tiver carregado, pode manter e remover esta linha
 
-n99_cat = (prefs_trans.get("n99_categoria") or "99").strip()
+uber_pessoa = str(prefs_trans.get("uber_pessoa", "")).strip()
+uber_cat    = str(prefs_trans.get("uber_categoria", "Uber")).strip()
+
+n99_pessoa  = str(prefs_trans.get("n99_pessoa", "")).strip()
+n99_cat     = str(prefs_trans.get("n99_categoria", "99")).strip()
 
 
 if n99_pessoa:
