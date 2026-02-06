@@ -639,13 +639,13 @@ with tab_resumo:
     <div class="card-title">Uber</div>
     <div class="card-big">{brl(u_total)}</div>
     <div class="card-sub">Qtd: {u_qtd}</div>
-</div>""", unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
-c9.markdown(f"""<div class="card">
+    c9.markdown(f"""<div class="card">
     <div class="card-title">99</div>
     <div class="card-big">{brl(n_total)}</div>
     <div class="card-sub">Qtd: {n_qtd}</div>
-</div>""", unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
 
     if mostrar_categoria:
         st.subheader("Resumo por categoria")
