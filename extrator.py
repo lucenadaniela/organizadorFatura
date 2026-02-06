@@ -65,10 +65,21 @@ def load_rules() -> pd.DataFrame:
         except Exception:
             pass
 
-    # defaults simples (você já tem seus fixos salvos no json)
+    # Defaults (se não existir regras_pagamentos.json)
     return pd.DataFrame([
-        {"tipo":"fixo","palavra_chave":"spotify","valor":"","pessoa":"Yves","categoria":"Fixos"},
-        {"tipo":"variavel","palavra_chave":"uber","valor":"","pessoa":"Daiane","categoria":"Uber"},
+        # ===== FIXOS (do seu print) =====
+        {"tipo": "fixo", "palavra_chave": "spotify",         "valor": "40,9",  "pessoa": "Yves",   "categoria": "Fixos"},
+        {"tipo": "fixo", "palavra_chave": "netflix",         "valor": "20,9",  "pessoa": "Yves",   "categoria": "Fixos"},
+        {"tipo": "fixo", "palavra_chave": "amazon prime",    "valor": "19,9",  "pessoa": "Yves",   "categoria": "Fixos"},
+        {"tipo": "fixo", "palavra_chave": "apple.com/bill",  "valor": "19,9",  "pessoa": "Yves",   "categoria": "Fixos"},
+        {"tipo": "fixo", "palavra_chave": "academia",        "valor": "149,9", "pessoa": "Yves",   "categoria": "Fixos"},
+        {"tipo": "fixo", "palavra_chave": "academia",        "valor": "133",   "pessoa": "Yves",   "categoria": "Fixos"},
+        {"tipo": "fixo", "palavra_chave": "nucel",           "valor": "30",    "pessoa": "Yves",   "categoria": "Fixos"},
+
+        # ===== VARIÁVEIS (do seu print) =====
+        {"tipo": "variavel", "palavra_chave": "uber",          "valor": "",       "pessoa": "Daiane", "categoria": "Uber"},
+        {"tipo": "variavel", "palavra_chave": "shein",         "valor": "136,50", "pessoa": "Maria",  "categoria": "Roupas"},
+        {"tipo": "variavel", "palavra_chave": "mercado livre", "valor": "55,87",  "pessoa": "Maria",  "categoria": "Carregador"},
     ]).fillna("")
 
 def save_rules(df: pd.DataFrame):
