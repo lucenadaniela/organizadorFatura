@@ -133,8 +133,8 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
     rules["tem_valor"] = rules["valor_float"].apply(lambda v: 1 if v is not None else 0)
 
     # prioridade: regra com valor > keyword longa
-rules = rules.reset_index().rename(columns={"index": "__ordem"})
-rules = rules.sort_values(
+    rules = rules.reset_index().rename(columns={"index": "__ordem"})
+    rules = rules.sort_values(
     ["tem_valor", "kw_len", "__ordem"],
     ascending=[False, False, True],
     kind="mergesort"  # mantém ordem estável
