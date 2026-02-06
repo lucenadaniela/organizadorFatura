@@ -19,6 +19,7 @@ except Exception:
 APP_TITLE = "Resumo da fatura (com regras + parcelamento)"
 RULES_FILE = "regras_pagamentos.json"
 PARCELAS_FILE = "regras_parcelamento.json"
+PREFS_TRANS_FILE = "preferencias_transporte.json"  # ✅ novo: uber/99 por pessoa
 
 
 # =========================
@@ -29,14 +30,10 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", s)
 
 def norm_compact(s: str) -> str:
-    """
-    Normaliza agressivo para casar:
-    'mercado livre' com 'MercadoLivre*...'
-    """
     s = (s or "").strip().lower()
     s = unicodedata.normalize("NFD", s)
-    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # remove acentos
-    s = re.sub(r"[^a-z0-9]+", "", s)  # remove tudo que não é letra/número
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    s = re.sub(r"[^a-z0-9]+", "", s)
     return s
 
 def brl(v: float) -> str:
@@ -66,6 +63,24 @@ def valor_bate(v1: float, v2: float, tol: float = 0.01) -> bool:
 
 
 # =========================
+# Preferências Uber/99 (salvas)
+# =========================
+def load_prefs_transporte() -> dict:
+    if Path(PREFS_TRANS_FILE).exists():
+        try:
+            return json.loads(Path(PREFS_TRANS_FILE).read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+def save_prefs_transporte(data: dict):
+    Path(PREFS_TRANS_FILE).write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+
+# =========================
 # Regras (manuais)
 # =========================
 def load_rules() -> pd.DataFrame:
@@ -80,10 +95,8 @@ def load_rules() -> pd.DataFrame:
         except Exception:
             pass
 
-    # Defaults (se não existir regras_pagamentos.json)
-    # ✅ Removido: uber sem valor para Daiane (você pediu)
+    # Defaults (sem uber Daiane sem valor)
     return pd.DataFrame([
-        # ===== FIXOS =====
         {"tipo": "fixo", "palavra_chave": "spotify",         "valor": "40,9",  "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "netflix",         "valor": "20,9",  "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "amazon prime",    "valor": "19,9",  "pessoa": "Yves",   "categoria": "Fixos"},
@@ -92,7 +105,6 @@ def load_rules() -> pd.DataFrame:
         {"tipo": "fixo", "palavra_chave": "academia",        "valor": "133",   "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "nucel",           "valor": "30",    "pessoa": "Yves",   "categoria": "Fixos"},
 
-        # ===== VARIÁVEIS (exemplos) =====
         {"tipo": "variavel", "palavra_chave": "shein",         "valor": "136,50", "pessoa": "Maria",  "categoria": "Roupas"},
         {"tipo": "variavel", "palavra_chave": "mercado livre", "valor": "55,87",  "pessoa": "Maria",  "categoria": "Carregador"},
     ]).fillna("")
@@ -138,13 +150,12 @@ def remover_texto_parcela(desc: str) -> str:
     return RE_PARCELA.sub("", desc or "").strip()
 
 def gerar_id_parcelamento(desc: str, valor: float):
-    # id mais estável: usa base compacta + valor
     base = f"{norm_compact(remover_texto_parcela(desc))}|{float(valor):.2f}"
     return hashlib.md5(base.encode("utf-8")).hexdigest()[:10]
 
 
 # =========================
-# Classificação
+# Classificação (manual + parcelamento)
 # =========================
 def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, default_person: str, default_cat: str):
     d = norm(desc)
@@ -158,7 +169,6 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
     rules["valor_float"] = rules["valor"].apply(parse_valor_regra)
     rules["tem_valor"] = rules["valor_float"].apply(lambda v: 1 if v is not None else 0)
 
-    # prioridade: regra com valor > keyword longa > ordem na tabela (estável)
     rules = rules.reset_index().rename(columns={"index": "__ordem"})
     rules = rules.sort_values(
         ["tem_valor", "kw_len", "__ordem"],
@@ -173,12 +183,10 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
         if not kw:
             continue
 
-        # casa se bater no texto normal OU compacto
         if (kw not in d) and (kw_comp not in d_comp):
             continue
 
         vr = r["valor_float"]
-        # se a regra tiver valor, exige bater. se estiver vazio, funciona para qualquer valor ✅
         if vr is not None and not valor_bate(valor_lanc, vr, tol=0.01):
             continue
 
@@ -190,7 +198,6 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
 
 def classify(desc: str, valor: float, id_parc: str, regras_parc: dict,
              rules_df: pd.DataFrame, default_person: str, default_cat: str):
-    # 1) parcelamento automático tem prioridade
     if id_parc and id_parc in regras_parc and not regras_parc[id_parc].get("concluido", False):
         r = regras_parc[id_parc]
         return (
@@ -198,8 +205,23 @@ def classify(desc: str, valor: float, id_parc: str, regras_parc: dict,
             r.get("categoria", default_cat),
             "parcelamento:auto"
         )
-    # 2) regras manuais
     return classify_manual(desc, valor, rules_df, default_person, default_cat)
+
+
+# =========================
+# Detectores Uber / 99
+# =========================
+RE_99_TOKEN = re.compile(r"(^|[^0-9])99([^0-9]|$)")
+
+def is_uber(desc: str) -> bool:
+    return "uber" in norm_compact(desc)
+
+def is_99(desc: str) -> bool:
+    dc = norm_compact(desc)
+    if "99app" in dc or "99taxi" in dc or "99pop" in dc:
+        return True
+    raw = (desc or "").lower()
+    return bool(RE_99_TOKEN.search(raw))
 
 
 # =========================
@@ -235,23 +257,6 @@ def parse_nubank_pdf(file_bytes: bytes, ano: int):
 
 
 # =========================
-# Detectores Uber / 99 para o resumo (sempre aparecem)
-# =========================
-RE_99_TOKEN = re.compile(r"(^|[^0-9])99([^0-9]|$)")  # evita pegar 199, 999 etc.
-
-def is_uber(desc: str) -> bool:
-    d = norm_compact(desc)
-    return "uber" in d
-
-def is_99(desc: str) -> bool:
-    # tenta ser menos “falso positivo” do que só "99" in texto
-    raw = (desc or "").lower()
-    if "99app" in norm_compact(desc) or "99taxi" in norm_compact(desc) or "99pop" in norm_compact(desc):
-        return True
-    return bool(RE_99_TOKEN.search(raw))
-
-
-# =========================
 # App
 # =========================
 st.set_page_config(page_title=APP_TITLE, layout="wide")
@@ -259,6 +264,7 @@ st.title(APP_TITLE)
 
 rules = load_rules()
 regras_parc = load_parcelas_rules()
+prefs_trans = load_prefs_transporte()
 
 with st.expander("⚙️ Configurações", expanded=False):
     default_person = st.text_input("Pessoa padrão (se não casar regra)", value="Pendente")
@@ -271,10 +277,47 @@ with st.expander("⚙️ Configurações", expanded=False):
     with colB:
         mostrar_pendencias = st.checkbox("Mostrar pendências", value=True)
     with colC:
-        mostrar_detalhes = st.checkbox("Mostrar detalhes", value=False)
+        mostrar_detalhes = st.checkbox("Mostrar detalhes", value=True)
 
 up = st.file_uploader("Upload PDF (Nubank texto selecionável) ou CSV (data, descricao, valor)", type=["pdf", "csv"])
 
+
+# =========================
+# Cadastro rápido Uber/99 por pessoa (salvo)
+# =========================
+with st.expander("🚕 Atribuir Uber/99 a uma pessoa (entra no quadro e nos totais)", expanded=False):
+    st.caption("Isso não depende de regra de valor. Você define a pessoa do Uber e do 99 e o app atribui automaticamente.")
+
+    pessoa_uber = st.text_input("Pessoa do Uber", value=prefs_trans.get("uber_pessoa", "Pendente"))
+    cat_uber = st.text_input("Categoria do Uber", value=prefs_trans.get("uber_categoria", "Uber"))
+
+    st.divider()
+
+    pessoa_99 = st.text_input("Pessoa do 99", value=prefs_trans.get("n99_pessoa", "Pendente"))
+    cat_99 = st.text_input("Categoria do 99", value=prefs_trans.get("n99_categoria", "99"))
+
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("💾 Salvar preferências Uber/99"):
+            prefs_trans = {
+                "uber_pessoa": pessoa_uber,
+                "uber_categoria": cat_uber,
+                "n99_pessoa": pessoa_99,
+                "n99_categoria": cat_99
+            }
+            save_prefs_transporte(prefs_trans)
+            st.success("Preferências salvas ✅ (vale para as próximas faturas também).")
+
+    with c2:
+        if st.button("🗑️ Limpar preferências Uber/99"):
+            Path(PREFS_TRANS_FILE).unlink(missing_ok=True)
+            prefs_trans = {}
+            st.warning("Preferências removidas. Recarregue (F5).")
+
+
+# =========================
+# Regras editor
+# =========================
 with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
     st.caption("Deixe 'valor' vazio para valer para qualquer valor. Use valor só para diferenciar pessoas na mesma loja.")
     rules_edited = st.data_editor(
@@ -300,8 +343,12 @@ with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
             Path(RULES_FILE).unlink(missing_ok=True)
             st.warning("Arquivo removido. Recarregue (F5).")
 
+
+# =========================
 # Processamento
+# =========================
 if up:
+    # carregar dataframe
     if up.name.lower().endswith(".csv"):
         df = pd.read_csv(up)
         df.columns = [c.strip().lower() for c in df.columns]
@@ -325,6 +372,7 @@ if up:
         st.warning("Não consegui extrair lançamentos do arquivo.")
         st.stop()
 
+    # enriquecer parcelas
     parc = df["descricao"].astype(str).apply(extrair_parcela)
     df["parcela_txt"] = parc.apply(lambda x: x[0])
     df["parcela_atual"] = parc.apply(lambda x: x[1])
@@ -332,8 +380,8 @@ if up:
     df["desc_base"] = df["descricao"].astype(str).apply(remover_texto_parcela)
     df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
 
+    # classificar (regras + parcelamento)
     rules_live = rules_edited.fillna("") if "rules_edited" in locals() else rules.fillna("")
-
     pessoas, cats, fonte = [], [], []
     for _, r in df.iterrows():
         p, c, f = classify(
@@ -346,44 +394,57 @@ if up:
             default_cat
         )
         pessoas.append(p); cats.append(c); fonte.append(f)
-
     df["pessoa"] = pessoas
     df["categoria"] = cats
     df["fonte_regra"] = fonte
 
+    # ✅ override Uber/99 por pessoa (entra no quadro e nos totais)
+    df["is_uber"] = df["descricao"].astype(str).apply(is_uber)
+    df["is_99"] = df["descricao"].astype(str).apply(is_99)
+
+    uber_pessoa = prefs_trans.get("uber_pessoa", "").strip()
+    uber_cat = prefs_trans.get("uber_categoria", "").strip()
+    n99_pessoa = prefs_trans.get("n99_pessoa", "").strip()
+    n99_cat = prefs_trans.get("n99_categoria", "").strip()
+
+    if uber_pessoa:
+        m = df["is_uber"]
+        df.loc[m, "pessoa"] = uber_pessoa
+        df.loc[m, "categoria"] = uber_cat or "Uber"
+        df.loc[m, "fonte_regra"] = "transporte:uber"
+
+    if n99_pessoa:
+        m = df["is_99"]
+        df.loc[m, "pessoa"] = n99_pessoa
+        df.loc[m, "categoria"] = n99_cat or "99"
+        df.loc[m, "fonte_regra"] = "transporte:99"
+
     # =========================
-    # RESUMO (tela principal)
+    # RESUMO
     # =========================
     st.divider()
-
     total_geral = float(df["valor"].sum())
     st.metric("Total geral", brl(total_geral))
 
-    # ---- bloco Uber / 99 (sempre) ----
-    st.subheader("Uber e 99 (contagem + total)")
-    df_tmp = df.copy()
-    df_tmp["is_uber"] = df_tmp["descricao"].astype(str).apply(is_uber)
-    df_tmp["is_99"] = df_tmp["descricao"].astype(str).apply(is_99)
-
-    uber_total = float(df_tmp.loc[df_tmp["is_uber"], "valor"].sum())
-    uber_qtd = int(df_tmp["is_uber"].sum())
-
-    n99_total = float(df_tmp.loc[df_tmp["is_99"], "valor"].sum())
-    n99_qtd = int(df_tmp["is_99"].sum())
-
-    cU, c9 = st.columns(2)
-    cU.metric("Uber — total", brl(uber_total))
-    cU.caption(f"Quantidade: {uber_qtd}")
-
-    c9.metric("99 — total", brl(n99_total))
-    c9.caption(f"Quantidade: {n99_qtd}")
-
-    # ---- totais por pessoa ----
+    # Totais por pessoa (agora Uber/99 já entram aqui)
     totais = df.groupby("pessoa", as_index=False)["valor"].sum().sort_values("valor", ascending=False)
     st.subheader("Totais por pessoa")
     cols = st.columns(min(6, max(1, len(totais))))
     for i, row in enumerate(totais.itertuples(index=False)):
         cols[i % len(cols)].metric(str(row.pessoa), brl(float(row.valor)))
+
+    # Contagem + total Uber/99 (já com pessoa atribuída)
+    st.subheader("Transporte (contagem + total)")
+    u_total = float(df.loc[df["is_uber"], "valor"].sum())
+    u_qtd = int(df["is_uber"].sum())
+    n_total = float(df.loc[df["is_99"], "valor"].sum())
+    n_qtd = int(df["is_99"].sum())
+
+    cU, c9 = st.columns(2)
+    cU.metric("Uber — total", brl(u_total))
+    cU.caption(f"Quantidade: {u_qtd} | Pessoa: {uber_pessoa or '—'}")
+    c9.metric("99 — total", brl(n_total))
+    c9.caption(f"Quantidade: {n_qtd} | Pessoa: {n99_pessoa or '—'}")
 
     if mostrar_categoria:
         st.subheader("Resumo por categoria")
@@ -399,13 +460,10 @@ if up:
         if pend.empty:
             st.success("Nada pendente 🎯")
         else:
-            st.dataframe(
-                pend[["data", "descricao", "valor", "pessoa", "categoria", "fonte_regra"]],
-                use_container_width=True,
-                height=260
-            )
+            st.dataframe(pend[["data", "descricao", "valor", "pessoa", "categoria", "fonte_regra"]],
+                         use_container_width=True, height=260)
 
-    # ---- Ensinar parcelamentos ----
+    # Ensinar parcelamentos
     with st.expander("📌 Ensinar parcelamentos (aplica até a última parcela)", expanded=False):
         df_parc = df[df["parcela_total"].notna()].copy()
         if df_parc.empty:
@@ -448,11 +506,8 @@ if up:
                         st.warning("Regra removida.")
 
     if mostrar_detalhes:
-        with st.expander("🧾 Detalhes (lançamentos)", expanded=False):
-            st.dataframe(
-                df[["data","descricao","valor","pessoa","categoria","fonte_regra","parcela_txt","id_parcelamento"]],
-                use_container_width=True,
-                height=420
-            )
+        with st.expander("🧾 Detalhes (lançamentos)", expanded=True):
+            st.dataframe(df[["data","descricao","valor","pessoa","categoria","fonte_regra","parcela_txt","id_parcelamento"]],
+                         use_container_width=True, height=420)
 else:
     st.info("Suba uma fatura para ver o resumo.")
