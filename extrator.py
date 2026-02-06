@@ -316,38 +316,53 @@ html, body, [class*="css"]  {
 h1 { font-size: 1.35rem; margin-bottom: 0.15rem; color: #0f172a; }
 h2 { font-size: 1.10rem; margin-top: 0.75rem; color: #0f172a; }
 h3 { font-size: 1.00rem; margin-top: 0.6rem; color: #0f172a; }
-
-/* =========================
-   ✅ LABELS DOS CAMPOS (invisível no print)
-   ========================= */
-div[data-testid="stWidgetLabel"] > label,
-div[data-testid="stWidgetLabel"] label,
-label[data-testid="stLabel"]{
-  color: #0f172a !important;
-  font-weight: 700 !important;
-  opacity: 1 !important;
-}
-div[data-testid="stWidgetLabel"] p{
-  color: #0f172a !important;
-  font-weight: 700 !important;
-  opacity: 1 !important;
-}
-div[data-testid="stWidgetLabel"] small,
-div[data-testid="stWidgetLabel"] span{
-  color: rgba(15,23,42,0.75) !important;
-  opacity: 1 !important;
-}
-section [data-testid="stWidgetLabel"] label{
-  color: #0f172a !important;
-  opacity: 1 !important;
-}
-/* opcional: aproxima label do campo */
-div[data-testid="stWidgetLabel"]{ margin-bottom: 0.15rem !important; }
-
-/* captions gerais */
 .stCaption, small {
   color: rgba(15,23,42,0.80) !important;
   opacity: 1 !important;
+}
+
+/* =========================
+   ✅ LABEL EM CIMA DO CAMPO (Pessoa/Categoria/etc.)
+   ========================= */
+div[data-testid="stWidgetLabel"],
+div[data-testid="stWidgetLabel"] *{
+  color: #0f172a !important;
+  opacity: 1 !important;
+}
+div[data-testid="stWidgetLabel"] label,
+div[data-testid="stWidgetLabel"] p,
+div[data-testid="stWidgetLabel"] span{
+  color: #0f172a !important;
+  opacity: 1 !important;
+  font-weight: 700 !important;
+}
+
+/* reforço dentro de Expander (onde costuma “sumir”) */
+[data-testid="stExpander"] div[data-testid="stWidgetLabel"],
+[data-testid="stExpander"] div[data-testid="stWidgetLabel"] *{
+  color: #0f172a !important;
+  opacity: 1 !important;
+}
+
+/* aproxima label do campo (mobile) */
+div[data-testid="stWidgetLabel"]{ margin-bottom: 0.15rem !important; }
+
+/* =========================
+   INPUTS / SELECTS - texto escuro
+   ========================= */
+div[data-baseweb="input"] input{
+  background: #ffffff !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important; /* iOS/Safari */
+}
+div[data-baseweb="input"] input::placeholder{
+  color: rgba(15,23,42,0.55) !important;
+  opacity: 1 !important;
+}
+div[data-baseweb="select"] > div{
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-radius: 12px !important;
 }
 
 /* =========================
@@ -413,19 +428,6 @@ div[data-testid="stWidgetLabel"]{ margin-bottom: 0.15rem !important; }
 }
 
 /* =========================
-   INPUTS / SELECTBOXES - fundo claro + texto escuro
-   ========================= */
-div[data-baseweb="input"] input{
-  background: #ffffff !important;
-  color: #0f172a !important;
-}
-div[data-baseweb="select"] > div{
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border-radius: 12px !important;
-}
-
-/* =========================
    DATAFRAMES / TABELAS
    ========================= */
 [data-testid="stDataFrame"]{
@@ -438,7 +440,7 @@ thead tr th{ font-size: 0.85rem; }
 tbody tr td{ font-size: 0.90rem; }
 
 /* =========================
-   BOTÕES - CORRIGE TEXTO INVISÍVEL
+   BOTÕES - TEXTO VISÍVEL
    ========================= */
 .stButton button,
 button[kind="primary"],
@@ -449,15 +451,12 @@ button[kind="secondary"]{
   border-radius: 12px !important;
   padding: 0.55rem 0.85rem !important;
 }
-
 .stButton button:hover,
 button[kind="primary"]:hover,
 button[kind="secondary"]:hover{
   background: #f8fafc !important;
   color: #0f172a !important;
 }
-
-/* garante o texto/ícone dentro do botão */
 .stButton button *{
   color: #0f172a !important;
 }
