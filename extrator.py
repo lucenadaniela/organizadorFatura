@@ -19,7 +19,7 @@ except Exception:
 APP_TITLE = "Resumo da fatura (com regras + parcelamento)"
 RULES_FILE = "regras_pagamentos.json"
 PARCELAS_FILE = "regras_parcelamento.json"
-PREFS_TRANS_FILE = "preferencias_transporte.json"     # uber/99 por pessoa
+PREFS_TRANS_FILE = "preferencias_transporte.json"     # uber/99 por pessoa (sem UI)
 OVERRIDES_FILE = "overrides_lancamentos.json"         # edições manuais por lançamento
 
 
@@ -64,7 +64,7 @@ def valor_bate(v1: float, v2: float, tol: float = 0.01) -> bool:
 
 
 # =========================
-# Persistência: Preferências Uber/99
+# Persistência: Preferências Uber/99 (sem UI)
 # =========================
 def load_prefs_transporte() -> dict:
     if Path(PREFS_TRANS_FILE).exists():
@@ -127,6 +127,7 @@ def load_rules() -> pd.DataFrame:
         {"tipo": "fixo", "palavra_chave": "academia",        "valor": "149,9", "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "academia",        "valor": "133",   "pessoa": "Yves",   "categoria": "Fixos"},
         {"tipo": "fixo", "palavra_chave": "nucel",           "valor": "30",    "pessoa": "Yves",   "categoria": "Fixos"},
+
         {"tipo": "variavel", "palavra_chave": "shein",         "valor": "136,50", "pessoa": "Maria",  "categoria": "Roupas"},
         {"tipo": "variavel", "palavra_chave": "mercado livre", "valor": "55,87",  "pessoa": "Maria",  "categoria": "Carregador"},
     ]).fillna("")
@@ -201,7 +202,6 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
     for _, r in rules.iterrows():
         kw = r["kw_norm"]
         kw_comp = r["kw_comp"]
-
         if not kw:
             continue
 
@@ -221,7 +221,6 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
 
 def classify(desc: str, valor: float, id_parc: str, regras_parc: dict,
              rules_df: pd.DataFrame, default_person: str, default_cat: str):
-    # prioridade: parcelamento salvo
     if id_parc and id_parc in regras_parc and not regras_parc[id_parc].get("concluido", False):
         r = regras_parc[id_parc]
         return (
@@ -229,8 +228,6 @@ def classify(desc: str, valor: float, id_parc: str, regras_parc: dict,
             r.get("categoria", default_cat),
             "parcelamento:auto"
         )
-
-    # senão: manual
     return classify_manual(desc, valor, rules_df, default_person, default_cat)
 
 
@@ -293,6 +290,16 @@ regras_parc = load_parcelas_rules()
 prefs_trans = load_prefs_transporte()
 overrides = load_overrides()
 
+# ✅ Defaults para Uber/99 se não existir arquivo (sem UI)
+if not prefs_trans:
+    prefs_trans = {
+        "uber_pessoa": "Daiane",
+        "uber_categoria": "Uber",
+        "n99_pessoa": "Daiane",
+        "n99_categoria": "99",
+    }
+    save_prefs_transporte(prefs_trans)
+
 with st.expander("⚙️ Configurações", expanded=False):
     default_person = st.text_input("Pessoa padrão (se não casar regra)", value="Pendente")
     default_cat = st.text_input("Categoria padrão (se não casar regra)", value="Revisar")
@@ -307,38 +314,6 @@ with st.expander("⚙️ Configurações", expanded=False):
         mostrar_detalhes = st.checkbox("Mostrar detalhes", value=True)
 
 up = st.file_uploader("Upload PDF (Nubank texto selecionável) ou CSV (data, descricao, valor)", type=["pdf", "csv"])
-
-
-# =========================
-# Cadastro rápido Uber/99 por pessoa (salvo)
-# =========================
-with st.expander("🚕 Atribuir Uber/99 a uma pessoa (entra no quadro e nos totais)", expanded=False):
-    st.caption("Defina a pessoa e categoria do Uber e do 99. Isso vale para todas as faturas (fica salvo).")
-
-    pessoa_uber = st.text_input("Pessoa do Uber", value=prefs_trans.get("uber_pessoa", ""))
-    cat_uber = st.text_input("Categoria do Uber", value=prefs_trans.get("uber_categoria", "Uber"))
-
-    st.divider()
-
-    pessoa_99 = st.text_input("Pessoa do 99", value=prefs_trans.get("n99_pessoa", ""))
-    cat_99 = st.text_input("Categoria do 99", value=prefs_trans.get("n99_categoria", "99"))
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("💾 Salvar preferências Uber/99"):
-            prefs_trans = {
-                "uber_pessoa": pessoa_uber.strip(),
-                "uber_categoria": cat_uber.strip(),
-                "n99_pessoa": pessoa_99.strip(),
-                "n99_categoria": cat_99.strip(),
-            }
-            save_prefs_transporte(prefs_trans)
-            st.success("Preferências salvas ✅")
-    with c2:
-        if st.button("🗑️ Limpar preferências Uber/99"):
-            Path(PREFS_TRANS_FILE).unlink(missing_ok=True)
-            prefs_trans = {}
-            st.warning("Preferências removidas. Recarregue (F5).")
 
 
 # =========================
@@ -374,6 +349,7 @@ with st.expander("🧠 Regras (editar/cadastrar)", expanded=False):
 # Processamento
 # =========================
 if up:
+    # carregar_toggle] 
     # carregar dataframe
     if up.name.lower().endswith(".csv"):
         df = pd.read_csv(up)
@@ -406,7 +382,7 @@ if up:
     df["desc_base"] = df["descricao"].astype(str).apply(remover_texto_parcela)
     df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
 
-    # id fixo do lançamento (para overrides)
+    # id do lançamento (para overrides)
     df["lanc_id"] = df.apply(lambda r: lanc_id(r["data"], r["descricao"], r["valor"]), axis=1)
 
     # classificar (regras + parcelamento)
@@ -431,7 +407,7 @@ if up:
     df["is_uber"] = df["descricao"].astype(str).apply(is_uber)
     df["is_99"] = df["descricao"].astype(str).apply(is_99)
 
-    # ✅ override uber/99 por preferências (se preenchidas)
+    # ✅ aplica preferências de Uber/99 (sem UI)
     uber_pessoa = (prefs_trans.get("uber_pessoa") or "").strip()
     uber_cat = (prefs_trans.get("uber_categoria") or "Uber").strip()
     n99_pessoa = (prefs_trans.get("n99_pessoa") or "").strip()
@@ -449,7 +425,7 @@ if up:
         df.loc[m, "categoria"] = n99_cat
         df.loc[m, "fonte_regra"] = "transporte:99"
 
-    # ✅ aplica overrides manuais (sempre por último, prioridade máxima)
+    # ✅ aplica overrides manuais (prioridade máxima)
     if overrides:
         m = df["lanc_id"].isin(overrides.keys())
         if m.any():
@@ -464,7 +440,7 @@ if up:
     total_geral = float(df["valor"].sum())
     st.metric("Total geral", brl(total_geral))
 
-    # Totais por pessoa (uber/99 e overrides já entram)
+    # Totais por pessoa
     totais = df.groupby("pessoa", as_index=False)["valor"].sum().sort_values("valor", ascending=False)
     st.subheader("Totais por pessoa")
     cols = st.columns(min(6, max(1, len(totais))))
@@ -513,7 +489,6 @@ if up:
                 column_config={
                     "pessoa": st.column_config.SelectboxColumn("pessoa", options=pessoas_opts),
                     "categoria": st.column_config.SelectboxColumn("categoria", options=cats_opts),
-                    "lanc_id": st.column_config.TextColumn("lanc_id"),
                 },
                 key="pend_editor"
             )
@@ -582,6 +557,5 @@ if up:
                 use_container_width=True,
                 height=420
             )
-
 else:
     st.info("Suba uma fatura para ver o resumo.")
