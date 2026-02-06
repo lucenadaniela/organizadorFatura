@@ -20,6 +20,14 @@ PARCELAS_FILE = "regras_parcelamento.json"    # regras automáticas: id_parcelam
 # =========================
 # Helpers
 # =========================
+
+def norm_compact(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # remove acentos
+    s = re.sub(r"[^a-z0-9]+", "", s)  # remove tudo que não é letra/número
+    return s
+    
 def norm(s: str) -> str:
     s = (s or "").strip().lower()
     return re.sub(r"\s+", " ", s)
@@ -124,40 +132,57 @@ def gerar_id_parcelamento(desc: str, valor: float):
 # =========================
 # Classificação
 # =========================
+import unicodedata
+import re
+
+def norm_compact(s: str) -> str:
+    s = (s or "").strip().lower()
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")  # remove acentos
+    s = re.sub(r"[^a-z0-9]+", "", s)  # remove tudo que não é letra/número
+    return s
+
+
 def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, default_person: str, default_cat: str):
-    d = norm(desc)
+    d = norm(desc)                 # normal com espaços
+    d_comp = norm_compact(desc)    # compacta sem símbolos/espaços
+
     rules = rules_df.copy().fillna("")
     rules["kw_norm"] = rules["palavra_chave"].astype(str).apply(norm)
     rules["kw_len"] = rules["kw_norm"].apply(len)
+    rules["kw_comp"] = rules["palavra_chave"].astype(str).apply(norm_compact)
+
     rules["valor_float"] = rules["valor"].apply(parse_valor_regra)
     rules["tem_valor"] = rules["valor_float"].apply(lambda v: 1 if v is not None else 0)
 
-    # prioridade: regra com valor > keyword longa
+    # prioridade: regra com valor > keyword longa > ordem na tabela
     rules = rules.reset_index().rename(columns={"index": "__ordem"})
     rules = rules.sort_values(
-    ["tem_valor", "kw_len", "__ordem"],
-    ascending=[False, False, True],
-    kind="mergesort"  # mantém ordem estável
-)
+        ["tem_valor", "kw_len", "__ordem"],
+        ascending=[False, False, True],
+        kind="mergesort"
+    )
+
     for _, r in rules.iterrows():
         kw = r["kw_norm"]
-        if not kw or kw not in d:
-            continue
-        vr = r["valor_float"]
-        if vr is not None and not valor_bate(valor_lanc, vr):
-            continue
-        return (r.get("pessoa", "") or default_person,
-                r.get("categoria", "") or default_cat,
-                "manual")
-    return default_person, default_cat, "fallback"
+        kw_comp = r["kw_comp"]
 
-def classify(desc: str, valor: float, id_parc: str, regras_parc: dict,
-             rules_df: pd.DataFrame, default_person: str, default_cat: str):
-    # regra automática de parcelamento tem prioridade
-    if id_parc and id_parc in regras_parc and not regras_parc[id_parc].get("concluido", False):
-        r = regras_parc[id_parc]
-        return r.get("pessoa", default_person), r.get("categoria", default_cat), "parcelamento:auto"
-    return classify_manual(desc, valor, rules_df, default_person, default_cat)
+        if not kw:
+            continue
+
+        # casa se bater no texto normal OU na versão compacta
+        if (kw not in d) and (kw_comp not in d_comp):
+            continue
+
+        vr = r["valor_float"]
+        if vr is not None and not valor_bate(valor_lanc, vr, tol=0.01):
+            continue
+
+        pessoa = r.get("pessoa", "") or default_person
+        categoria = r.get("categoria", "") or default_cat
+        return pessoa, categoria, "manual"
+
+    return default_person, default_cat, "fallback"
 
 # =========================
 # Parser PDF Nubank (texto selecionável)
