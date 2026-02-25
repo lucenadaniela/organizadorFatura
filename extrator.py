@@ -74,6 +74,14 @@ def valor_bate(v1: float, v2: float, tol: float = 0.01) -> bool:
     except Exception:
         return False
 
+def categoria_from_tipo(tipo: str, default_cat: str) -> str:
+    t = norm(tipo)
+    if t == "fixo":
+        return "Fixo"
+    if t == "variavel":
+        return "Variável"
+    return default_cat
+
 
 # =========================
 # UI / CSS (dark + mobile-first)
@@ -110,13 +118,11 @@ def inject_css():
       p, label, span, div, small { color: var(--text) !important; }
       .muted { color: var(--muted) !important; }
 
-      /* Sidebar */
       [data-testid="stSidebar"]{
         background: rgba(255,255,255,0.03) !important;
         border-right: 1px solid var(--border);
       }
 
-      /* Inputs */
       input, textarea{
         background: rgba(255,255,255,0.06) !important;
         border: 1px solid var(--border) !important;
@@ -128,6 +134,7 @@ def inject_css():
         box-shadow: 0 0 0 3px rgba(124,58,237,0.25) !important;
         border-color: rgba(124,58,237,0.55) !important;
       }
+
       [data-baseweb="select"] > div{
         background: rgba(255,255,255,0.06) !important;
         border: 1px solid var(--border) !important;
@@ -135,7 +142,6 @@ def inject_css():
         color: var(--text) !important;
       }
 
-      /* File uploader */
       [data-testid="stFileUploaderDropzone"]{
         background: rgba(255,255,255,0.05) !important;
         border: 1px dashed rgba(255,255,255,0.22) !important;
@@ -143,7 +149,6 @@ def inject_css():
         padding: 20px !important;
       }
 
-      /* Buttons */
       .stButton > button{
         background: linear-gradient(135deg, rgba(124,58,237,0.95), rgba(99,102,241,0.95)) !important;
         color: white !important;
@@ -153,6 +158,7 @@ def inject_css():
         width: 100%;
         box-shadow: var(--shadow);
       }
+
       button[kind="secondary"]{
         background: rgba(255,255,255,0.07) !important;
         color: var(--text) !important;
@@ -160,7 +166,6 @@ def inject_css():
         box-shadow: none !important;
       }
 
-      /* Card */
       .card{
         background: var(--panel);
         border: 1px solid var(--border);
@@ -169,7 +174,6 @@ def inject_css():
         box-shadow: var(--shadow);
       }
 
-      /* Dataframe */
       [data-testid="stDataFrame"]{
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -177,7 +181,6 @@ def inject_css():
         background: rgba(255,255,255,0.03);
       }
 
-      /* Mobile */
       @media (max-width: 900px){
         .block-container{
           padding-left: 1rem !important;
@@ -220,11 +223,9 @@ def get_uid():
     sess = st.session_state.get("auth_session")
     if not sess:
         return None
-    # supabase-py normalmente guarda user dentro da session
     user = getattr(sess, "user", None)
     if user and getattr(user, "id", None):
         return user.id
-    # fallback
     try:
         return sess.get("user", {}).get("id")
     except Exception:
@@ -232,13 +233,12 @@ def get_uid():
 
 
 # =========================
-# Login UI (sidebar + card central)
+# Login UI
 # =========================
 def login_ui(sb):
     if "auth_session" not in st.session_state:
         st.session_state["auth_session"] = None
 
-    # Sidebar login
     with st.sidebar:
         st.markdown("## 🔒 Conta")
         tab1, tab2 = st.tabs(["Entrar", "Criar conta"])
@@ -282,7 +282,6 @@ def login_ui(sb):
                 st.session_state["auth_session"] = None
                 st.rerun()
 
-    # Card central quando não logado (ótimo no celular)
     if not st.session_state["auth_session"]:
         st.markdown(f"## {APP_TITLE}")
         st.markdown('<p class="muted">Entre para acessar suas regras e parcelamentos salvos.</p>', unsafe_allow_html=True)
@@ -311,50 +310,48 @@ def login_ui(sb):
 # Regras (Supabase)
 # =========================
 def rules_default_df():
-    # defaults mínimos sem amarrar "Daiane" em regra sem valor
     return pd.DataFrame([
-        {"tipo": "variavel", "palavra_chave": "uber",  "valor": "", "pessoa": "", "categoria": "Transporte"},
-        {"tipo": "variavel", "palavra_chave": "99app", "valor": "", "pessoa": "", "categoria": "Transporte"},
-        {"tipo": "variavel", "palavra_chave": "99",    "valor": "", "pessoa": "", "categoria": "Transporte"},
+        {"tipo": "variavel", "palavra_chave": "uber",  "valor": ""},
+        {"tipo": "variavel", "palavra_chave": "99app", "valor": ""},
+        {"tipo": "variavel", "palavra_chave": "99",    "valor": ""},
     ])
 
 def load_rules_sb(sb, uid: str) -> pd.DataFrame:
     try:
-        res = sb.table(TBL_RULES).select("tipo,palavra_chave,valor,pessoa,categoria").eq("user_id", uid).execute()
+        res = sb.table(TBL_RULES).select("tipo,palavra_chave,valor").eq("user_id", uid).execute()
         data = res.data or []
         if not data:
             return rules_default_df()
+
         df = pd.DataFrame(data).fillna("")
-        # garante colunas
-        for c in ["tipo","palavra_chave","valor","pessoa","categoria"]:
+        for c in ["tipo", "palavra_chave", "valor"]:
             if c not in df.columns:
                 df[c] = ""
-        return df[["tipo","palavra_chave","valor","pessoa","categoria"]].fillna("")
+
+        return df[["tipo", "palavra_chave", "valor"]].fillna("")
     except Exception as e:
-        st.error("Erro ao carregar regras do Supabase. Confere se a tabela/colunas existem e se o RLS está ok.")
+        st.error(f"Erro ao carregar regras do Supabase: {e}")
         st.stop()
 
 def save_rules_sb(sb, uid: str, df: pd.DataFrame):
     df = df.fillna("")
     rows = df.to_dict(orient="records")
 
-    # estratégia simples e confiável: apaga do usuário e reinsere
     try:
         sb.table(TBL_RULES).delete().eq("user_id", uid).execute()
+
         if rows:
             payload = []
             for r in rows:
                 payload.append({
                     "user_id": uid,
-                    "tipo": r.get("tipo",""),
-                    "palavra_chave": r.get("palavra_chave",""),
-                    "valor": r.get("valor",""),
-                    "pessoa": r.get("pessoa",""),
-                    "categoria": r.get("categoria",""),
+                    "tipo": r.get("tipo", ""),
+                    "palavra_chave": r.get("palavra_chave", ""),
+                    "valor": r.get("valor", ""),
                 })
             sb.table(TBL_RULES).insert(payload).execute()
-    except Exception:
-        st.error("Erro ao salvar regras no Supabase. Verifique RLS/policies e colunas.")
+    except Exception as e:
+        st.error(f"Erro ao salvar regras no Supabase: {e}")
         st.stop()
 
 
@@ -363,42 +360,39 @@ def save_rules_sb(sb, uid: str, df: pd.DataFrame):
 # =========================
 def load_parc_sb(sb, uid: str) -> dict:
     try:
-        res = sb.table(TBL_PARC).select("id_parcelamento,pessoa,categoria,parcelas_total,concluido,desc_base").eq("user_id", uid).execute()
+        res = sb.table(TBL_PARC).select("id_parcelamento,pessoa,categoria").eq("user_id", uid).execute()
         data = res.data or []
         out = {}
         for r in data:
             out[str(r.get("id_parcelamento"))] = {
                 "pessoa": r.get("pessoa") or "",
                 "categoria": r.get("categoria") or "",
-                "parcelas_total": r.get("parcelas_total"),
-                "concluido": bool(r.get("concluido")) if r.get("concluido") is not None else False,
-                "desc_base": r.get("desc_base") or "",
             }
         return out
-    except Exception:
-        st.error("Erro ao carregar parcelamentos do Supabase. Verifique tabela/colunas e RLS.")
+    except Exception as e:
+        st.error(f"Erro ao carregar parcelamentos do Supabase: {e}")
         st.stop()
 
-def upsert_parc_sb(sb, uid: str, pid: str, pessoa: str, categoria: str, parcelas_total: int | None, desc_base: str, concluido: bool = False):
+def upsert_parc_sb(sb, uid: str, pid: str, pessoa: str, categoria: str):
     payload = {
         "user_id": uid,
         "id_parcelamento": pid,
         "pessoa": pessoa or "",
         "categoria": categoria or "",
-        "parcelas_total": parcelas_total,
-        "desc_base": desc_base or "",
-        "concluido": bool(concluido),
     }
     try:
-        # se você criou constraint unique (user_id, id_parcelamento), isso funciona perfeito:
-        sb.table(TBL_PARC).upsert(payload, on_conflict="user_id,id_parcelamento").execute()
-    except Exception:
-        # fallback: delete + insert (funciona mesmo sem constraint)
         sb.table(TBL_PARC).delete().eq("user_id", uid).eq("id_parcelamento", pid).execute()
         sb.table(TBL_PARC).insert(payload).execute()
+    except Exception as e:
+        st.error(f"Erro ao salvar parcelamento: {e}")
+        st.stop()
 
 def delete_parc_sb(sb, uid: str, pid: str):
-    sb.table(TBL_PARC).delete().eq("user_id", uid).eq("id_parcelamento", pid).execute()
+    try:
+        sb.table(TBL_PARC).delete().eq("user_id", uid).eq("id_parcelamento", pid).execute()
+    except Exception as e:
+        st.error(f"Erro ao remover parcelamento: {e}")
+        st.stop()
 
 
 # =========================
@@ -424,7 +418,7 @@ def gerar_id_parcelamento(desc: str, valor: float):
 # Classificação
 # prioridade:
 # 1) parcelamento salvo
-# 2) regra manual (keyword + valor opcional)
+# 2) regra manual
 # 3) fallback
 # =========================
 def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, default_person: str, default_cat: str):
@@ -439,7 +433,6 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
     rules["valor_float"] = rules["valor"].apply(parse_valor_regra)
     rules["tem_valor"] = rules["valor_float"].apply(lambda v: 1 if v is not None else 0)
 
-    # prioridade: regra com valor > keyword longa > ordem
     rules = rules.reset_index().rename(columns={"index": "__ordem"})
     rules = rules.sort_values(
         ["tem_valor", "kw_len", "__ordem"],
@@ -460,26 +453,24 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
         if vr is not None and not valor_bate(valor_lanc, vr, tol=0.01):
             continue
 
-        pessoa = (r.get("pessoa", "") or "").strip() or default_person
-        categoria = (r.get("categoria", "") or "").strip() or default_cat
+        pessoa = default_person
+        categoria = categoria_from_tipo(r.get("tipo", ""), default_cat)
         return pessoa, categoria, "manual"
 
     return default_person, default_cat, "fallback"
 
 def classify(desc: str, valor_lanc: float, id_parc: str, parc_rules: dict, rules_df: pd.DataFrame, default_person: str, default_cat: str):
-    # 1) parcelamento salvo
-    if id_parc and id_parc in parc_rules and not parc_rules[id_parc].get("concluido", False):
+    if id_parc and id_parc in parc_rules:
         pr = parc_rules[id_parc]
-        pessoa = (pr.get("pessoa","") or "").strip() or default_person
-        categoria = (pr.get("categoria","") or "").strip() or default_cat
+        pessoa = (pr.get("pessoa", "") or "").strip() or default_person
+        categoria = (pr.get("categoria", "") or "").strip() or default_cat
         return pessoa, categoria, "parcelamento"
 
-    # 2) regras manuais
     return classify_manual(desc, valor_lanc, rules_df, default_person, default_cat)
 
 
 # =========================
-# Parser PDF Nubank (texto selecionável)
+# Parser PDF Nubank
 # =========================
 LINHA_RE = re.compile(r"^(?P<dia>\d{2})\s(?P<mes>[A-Z]{3})\s(?P<desc>.+?)\sR\$\s(?P<valor>[\d\.,]+)$")
 MESES = {"JAN":"01","FEV":"02","MAR":"03","ABR":"04","MAI":"05","JUN":"06","JUL":"07","AGO":"08","SET":"09","OUT":"10","NOV":"11","DEZ":"12"}
@@ -524,11 +515,9 @@ if not uid:
     st.error("Não consegui pegar seu user_id (sessão). Tenta sair e entrar de novo.")
     st.stop()
 
-# carrega regras e parcelamentos do usuário
 rules_df = load_rules_sb(sb, uid)
 parc_rules = load_parc_sb(sb, uid)
 
-# ===== CONFIG no topo (compacto) =====
 st.markdown(f"## {APP_TITLE}")
 with st.expander("⚙️ Configurações", expanded=False):
     default_person = st.text_input("Pessoa padrão (se não casar regra)", value="Pendente")
@@ -548,7 +537,8 @@ up = st.file_uploader("Envie o PDF do Nubank (texto selecionável) ou CSV (data,
 
 # ===== REGRAS editor =====
 with st.expander("🧠 Regras (editar/cadastrar) — fica salvo no seu login", expanded=False):
-    st.caption("Dica: deixe o campo VALOR vazio pra regra valer pra qualquer valor (ex.: Uber, 99).")
+    st.caption("Dica: deixe o campo VALOR vazio pra regra valer pra qualquer valor.")
+    st.caption("A categoria é definida pelo TIPO: fixo = Fixo | variavel = Variável | outros = categoria padrão.")
 
     rules_edited = st.data_editor(
         rules_df,
@@ -558,8 +548,6 @@ with st.expander("🧠 Regras (editar/cadastrar) — fica salvo no seu login", e
             "tipo": st.column_config.SelectboxColumn("tipo", options=["fixo", "variavel", "outros"]),
             "palavra_chave": st.column_config.TextColumn("palavra_chave"),
             "valor": st.column_config.TextColumn("valor", help="Opcional. Ex.: 136,50"),
-            "pessoa": st.column_config.TextColumn("pessoa", help="Se vazio, usa Pessoa padrão."),
-            "categoria": st.column_config.TextColumn("categoria", help="Se vazio, usa Categoria padrão."),
         },
         key="rules_editor"
     )
@@ -584,7 +572,6 @@ if not up:
     st.info("Suba uma fatura para ver o resumo.")
     st.stop()
 
-# carregar dataframe
 if up.name.lower().endswith(".csv"):
     df = pd.read_csv(up)
     df.columns = [c.strip().lower() for c in df.columns]
@@ -608,7 +595,6 @@ if df.empty:
     st.warning("Não consegui extrair lançamentos do arquivo.")
     st.stop()
 
-# enriquecer parcelas
 parc = df["descricao"].astype(str).apply(extrair_parcela)
 df["parcela_txt"] = parc.apply(lambda x: x[0])
 df["parcela_atual"] = parc.apply(lambda x: x[1])
@@ -616,7 +602,6 @@ df["parcela_total"] = parc.apply(lambda x: x[2])
 df["desc_base"] = df["descricao"].astype(str).apply(remover_texto_parcela)
 df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
 
-# classificar com regras
 rules_live = rules_edited.fillna("") if "rules_edited" in locals() else rules_df.fillna("")
 pessoas, cats, fonte = [], [], []
 for _, r in df.iterrows():
@@ -637,6 +622,7 @@ df["pessoa"] = pessoas
 df["categoria"] = cats
 df["fonte_regra"] = fonte
 
+
 # =========================
 # RESUMO PRINCIPAL
 # =========================
@@ -644,12 +630,10 @@ st.divider()
 total_geral = float(df["valor"].sum())
 st.metric("Total geral", brl(total_geral))
 
-# Totais por pessoa (se pendências editarem, recalcula na hora)
 def render_totais_por_pessoa(df_):
     totais = df_.groupby("pessoa", as_index=False)["valor"].sum().sort_values("valor", ascending=False)
     st.subheader("Totais por pessoa")
 
-    # no celular, 2 colunas é mais legível
     cols = st.columns(2 if len(totais) > 1 else 1)
     for i, row in enumerate(totais.itertuples(index=False)):
         cols[i % len(cols)].metric(str(row.pessoa), brl(float(row.valor)))
@@ -664,6 +648,7 @@ if mostrar_categoria:
     )
     st.dataframe(resumo_cat, use_container_width=True)
 
+
 # =========================
 # PENDÊNCIAS EDITÁVEIS
 # =========================
@@ -674,7 +659,6 @@ if mostrar_pendencias:
     if pend.empty:
         st.success("Nada pendente 🎯")
     else:
-        # tabela editável só com as colunas que importam
         pend_view = pend[["data", "descricao", "valor", "pessoa", "categoria"]].copy()
         pend_edit = st.data_editor(
             pend_view,
@@ -686,8 +670,6 @@ if mostrar_pendencias:
         cA, cB = st.columns(2)
         with cA:
             if st.button("✅ Aplicar edições (só nesta tela)"):
-                # aplica de volta no df original (match por data+descricao+valor)
-                # (simples e eficiente pro seu caso)
                 for _, row in pend_edit.iterrows():
                     mask = (
                         (df["data"] == row["data"]) &
@@ -701,10 +683,11 @@ if mostrar_pendencias:
                 render_totais_por_pessoa(df)
 
         with cB:
-            st.caption("Se quiser “fixar” essas edições pro futuro, crie uma regra em 🧠 Regras (por palavra-chave).")
+            st.caption("Se quiser automatizar pro futuro, crie uma regra em 🧠 Regras.")
+
 
 # =========================
-# ENSINAR PARCELAMENTOS (SALVO NO SUPABASE)
+# ENSINAR PARCELAMENTOS
 # =========================
 with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=False):
     df_parc = df[df["parcela_total"].notna()].copy()
@@ -723,7 +706,7 @@ with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=
         pessoa_sel = st.text_input("Pessoa (para este parcelamento)", value=str(ex["pessoa"]))
         cat_sel = st.text_input("Categoria (para este parcelamento)", value=str(ex["categoria"]))
 
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         with c1:
             if st.button("💾 Salvar parcelamento"):
                 upsert_parc_sb(
@@ -731,39 +714,16 @@ with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=
                     pid=sel_id,
                     pessoa=pessoa_sel,
                     categoria=cat_sel,
-                    parcelas_total=int(ex["parcela_total"]) if pd.notna(ex["parcela_total"]) else None,
-                    desc_base=str(ex["desc_base"]),
-                    concluido=False
                 )
-                st.success("Parcelamento salvo ✅ (vai aplicar nas próximas faturas)")
+                st.success("Parcelamento salvo ✅")
                 st.rerun()
 
         with c2:
             if st.button("🗑️ Remover parcelamento", type="secondary"):
-                try:
-                    delete_parc_sb(sb, uid, sel_id)
-                    st.warning("Parcelamento removido.")
-                    st.rerun()
-                except Exception:
-                    st.error("Não consegui remover. Verifique RLS/policies.")
+                delete_parc_sb(sb, uid, sel_id)
+                st.warning("Parcelamento removido.")
+                st.rerun()
 
-        with c3:
-            # opcional: marcar concluído (se quiser parar de aplicar)
-            if st.button("✅ Marcar concluído", type="secondary"):
-                try:
-                    upsert_parc_sb(
-                        sb, uid,
-                        pid=sel_id,
-                        pessoa=pessoa_sel,
-                        categoria=cat_sel,
-                        parcelas_total=int(ex["parcela_total"]) if pd.notna(ex["parcela_total"]) else None,
-                        desc_base=str(ex["desc_base"]),
-                        concluido=True
-                    )
-                    st.success("Marcado como concluído (não aplica mais).")
-                    st.rerun()
-                except Exception:
-                    st.error("Não consegui concluir. Verifique RLS/policies.")
 
 # =========================
 # DETALHES
