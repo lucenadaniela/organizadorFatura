@@ -1,10 +1,7 @@
 import io
 import re
-import json
 import hashlib
 import unicodedata
-from pathlib import Path
-from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -30,9 +27,9 @@ except Exception:
 
 APP_TITLE = "Organizador de fatura (com login + regras salvas)"
 
-# nomes das tabelas no Supabase
+# Tabelas no Supabase (como estão hoje)
 TBL_RULES = "regras_pagamentos"
-TBL_PARC  = "regras_parcelamento"
+TBL_PARC = "regras_parcelamento"
 
 
 # =========================
@@ -58,9 +55,11 @@ def parse_valor_regra(x):
         return None
     if isinstance(x, (int, float)) and pd.notna(x):
         return float(x)
+
     s = str(x).strip()
     if s == "" or s.lower() in ("nan", "none"):
         return None
+
     s = s.replace("R$", "").replace(" ", "")
     s = s.replace(".", "").replace(",", ".")
     try:
@@ -84,101 +83,204 @@ def categoria_from_tipo(tipo: str, default_cat: str) -> str:
 
 
 # =========================
-# UI / CSS (dark + mobile-first)
+# UI / CSS (dark estável)
 # =========================
 def inject_css():
     st.markdown("""
     <style>
       :root{
         --bg: #0b1220;
-        --panel: rgba(255,255,255,0.06);
-        --panel2: rgba(255,255,255,0.08);
-        --text: rgba(255,255,255,0.92);
-        --muted: rgba(255,255,255,0.68);
-        --border: rgba(255,255,255,0.14);
+        --bg-soft: #111827;
+        --panel: rgba(17, 24, 39, 0.88);
+        --panel-2: rgba(31, 41, 55, 0.95);
+        --text: #f9fafb;
+        --muted: #cbd5e1;
+        --border: rgba(255,255,255,0.10);
+        --border-strong: rgba(255,255,255,0.16);
+        --accent: #7c3aed;
+        --accent-2: #6366f1;
         --shadow: 0 10px 30px rgba(0,0,0,0.35);
         --radius: 18px;
       }
 
       html, body, [data-testid="stAppViewContainer"]{
         background:
-          radial-gradient(1200px 700px at 20% 10%, rgba(124,58,237,0.18), transparent 50%),
-          radial-gradient(1000px 600px at 80% 30%, rgba(34,197,94,0.10), transparent 55%),
+          radial-gradient(1200px 700px at 20% 10%, rgba(124,58,237,0.14), transparent 50%),
+          radial-gradient(1000px 600px at 80% 30%, rgba(34,197,94,0.08), transparent 55%),
           var(--bg) !important;
         color: var(--text) !important;
       }
 
-      .block-container{
-        padding-top: 1.25rem !important;
-        padding-bottom: 2.5rem !important;
-        max-width: 1200px;
+      [data-testid="stAppViewContainer"] *{
+        color: inherit;
       }
 
-      h1,h2,h3{ letter-spacing: -0.02em; }
-      p, label, span, div, small { color: var(--text) !important; }
-      .muted { color: var(--muted) !important; }
+      .block-container{
+        max-width: 1200px;
+        padding-top: 1.2rem !important;
+        padding-bottom: 2.2rem !important;
+      }
+
+      h1,h2,h3,h4,h5,h6{
+        color: var(--text) !important;
+        letter-spacing: -0.02em;
+      }
+
+      p, label, span, small{
+        color: var(--text) !important;
+      }
+
+      .muted{
+        color: var(--muted) !important;
+      }
 
       [data-testid="stSidebar"]{
-        background: rgba(255,255,255,0.03) !important;
-        border-right: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(17,24,39,0.96), rgba(10,16,30,0.98)) !important;
+        border-right: 1px solid var(--border) !important;
       }
 
-      input, textarea{
-        background: rgba(255,255,255,0.06) !important;
-        border: 1px solid var(--border) !important;
+      [data-testid="stSidebar"] *{
         color: var(--text) !important;
-        border-radius: 12px !important;
-      }
-      input:focus, textarea:focus{
-        outline: none !important;
-        box-shadow: 0 0 0 3px rgba(124,58,237,0.25) !important;
-        border-color: rgba(124,58,237,0.55) !important;
-      }
-
-      [data-baseweb="select"] > div{
-        background: rgba(255,255,255,0.06) !important;
-        border: 1px solid var(--border) !important;
-        border-radius: 12px !important;
-        color: var(--text) !important;
-      }
-
-      [data-testid="stFileUploaderDropzone"]{
-        background: rgba(255,255,255,0.05) !important;
-        border: 1px dashed rgba(255,255,255,0.22) !important;
-        border-radius: var(--radius) !important;
-        padding: 20px !important;
-      }
-
-      .stButton > button{
-        background: linear-gradient(135deg, rgba(124,58,237,0.95), rgba(99,102,241,0.95)) !important;
-        color: white !important;
-        border: 1px solid rgba(255,255,255,0.12) !important;
-        border-radius: 14px !important;
-        padding: 0.70rem 1rem !important;
-        width: 100%;
-        box-shadow: var(--shadow);
-      }
-
-      button[kind="secondary"]{
-        background: rgba(255,255,255,0.07) !important;
-        color: var(--text) !important;
-        border: 1px solid var(--border) !important;
-        box-shadow: none !important;
       }
 
       .card{
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        padding: 16px 16px;
+        padding: 16px;
         box-shadow: var(--shadow);
       }
 
+      .stTextInput input,
+      .stTextArea textarea,
+      .stNumberInput input,
+      input, textarea{
+        background: var(--panel-2) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--border-strong) !important;
+        border-radius: 12px !important;
+      }
+
+      .stTextInput input::placeholder,
+      .stTextArea textarea::placeholder,
+      .stNumberInput input::placeholder,
+      input::placeholder,
+      textarea::placeholder{
+        color: #94a3b8 !important;
+      }
+
+      .stTextInput input:focus,
+      .stTextArea textarea:focus,
+      .stNumberInput input:focus,
+      input:focus,
+      textarea:focus{
+        box-shadow: 0 0 0 3px rgba(124,58,237,0.22) !important;
+        border-color: rgba(124,58,237,0.55) !important;
+        outline: none !important;
+      }
+
+      [data-baseweb="select"] > div{
+        background: var(--panel-2) !important;
+        border: 1px solid var(--border-strong) !important;
+        border-radius: 12px !important;
+        color: var(--text) !important;
+      }
+
+      [data-baseweb="popover"]{
+        background: #111827 !important;
+        color: var(--text) !important;
+      }
+
+      [data-testid="stFileUploaderDropzone"]{
+        background: rgba(17,24,39,0.72) !important;
+        border: 1px dashed rgba(255,255,255,0.18) !important;
+        border-radius: var(--radius) !important;
+        padding: 20px !important;
+      }
+
+      .stButton > button{
+        background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+        color: white !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+        border-radius: 14px !important;
+        padding: 0.72rem 1rem !important;
+        width: 100%;
+        box-shadow: var(--shadow);
+      }
+
+      .stButton > button:hover{
+        filter: brightness(1.05);
+      }
+
+      button[kind="secondary"]{
+        background: rgba(255,255,255,0.06) !important;
+        color: var(--text) !important;
+        border: 1px solid var(--border) !important;
+        box-shadow: none !important;
+      }
+
+      [data-testid="stAlert"]{
+        border-radius: 14px !important;
+        border: 1px solid var(--border) !important;
+      }
+
+      details{
+        background: rgba(17,24,39,0.42) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 16px !important;
+      }
+
       [data-testid="stDataFrame"]{
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        overflow: hidden;
-        background: rgba(255,255,255,0.03);
+        background: rgba(17,24,39,0.86) !important;
+        border: 1px solid var(--border) !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+      }
+
+      [data-testid="stDataFrame"] [role="grid"]{
+        background: #111827 !important;
+        color: var(--text) !important;
+      }
+
+      [data-testid="stDataFrame"] [role="row"]{
+        background: #111827 !important;
+        color: var(--text) !important;
+      }
+
+      [data-testid="stDataFrame"] [role="gridcell"],
+      [data-testid="stDataFrame"] [role="columnheader"],
+      [data-testid="stDataFrame"] [role="rowheader"]{
+        background: #111827 !important;
+        color: var(--text) !important;
+        border-color: rgba(255,255,255,0.08) !important;
+      }
+
+      [data-testid="stDataFrame"] input,
+      [data-testid="stDataFrame"] textarea{
+        background: #1f2937 !important;
+        color: var(--text) !important;
+        border: 1px solid rgba(255,255,255,0.10) !important;
+      }
+
+      [data-testid="stDataFrame"] button{
+        color: var(--text) !important;
+      }
+
+      table{
+        background: #111827 !important;
+        color: var(--text) !important;
+      }
+
+      th, td{
+        border-color: rgba(255,255,255,0.08) !important;
+      }
+
+      .stCheckbox label, .stRadio label{
+        color: var(--text) !important;
+      }
+
+      hr{
+        border-color: rgba(255,255,255,0.08) !important;
       }
 
       @media (max-width: 900px){
@@ -186,12 +288,15 @@ def inject_css():
           padding-left: 1rem !important;
           padding-right: 1rem !important;
         }
+
         .stButton > button{
           padding: 0.85rem 1rem !important;
           border-radius: 16px !important;
         }
-        input{
-          padding: 0.80rem 0.9rem !important;
+
+        .stTextInput input,
+        .stTextArea textarea,
+        .stNumberInput input{
           font-size: 1rem !important;
         }
       }
@@ -223,9 +328,11 @@ def get_uid():
     sess = st.session_state.get("auth_session")
     if not sess:
         return None
+
     user = getattr(sess, "user", None)
     if user and getattr(user, "id", None):
         return user.id
+
     try:
         return sess.get("user", {}).get("id")
     except Exception:
@@ -248,6 +355,7 @@ def login_ui(sb):
                 email = st.text_input("Email", placeholder="seuemail@exemplo.com", key="login_email_sb")
                 senha = st.text_input("Senha", type="password", key="login_pass_sb")
                 ok = st.form_submit_button("Entrar")
+
             if ok:
                 try:
                     res = sb.auth.sign_in_with_password({"email": email, "password": senha})
@@ -262,6 +370,7 @@ def login_ui(sb):
                 email2 = st.text_input("Email", placeholder="seuemail@exemplo.com", key="su_email_sb")
                 senha2 = st.text_input("Senha", type="password", key="su_pass_sb")
                 ok2 = st.form_submit_button("Criar conta")
+
             if ok2:
                 try:
                     sb.auth.sign_up({"email": email2, "password": senha2})
@@ -269,7 +378,7 @@ def login_ui(sb):
                 except Exception as e:
                     msg = str(e).lower()
                     if "rate limit" in msg:
-                        st.error("Erro no cadastro: limite de emails atingido (rate limit). Aguarde um pouco e tente de novo.")
+                        st.error("Erro no cadastro: limite de emails atingido. Aguarde e tente de novo.")
                     else:
                         st.error("Erro no cadastro. Verifique email/senha.")
 
@@ -308,18 +417,20 @@ def login_ui(sb):
 
 # =========================
 # Regras (Supabase)
+# Tabela: user_id, tipo, palavra_chave, valor
 # =========================
 def rules_default_df():
     return pd.DataFrame([
-        {"tipo": "variavel", "palavra_chave": "uber",  "valor": ""},
+        {"tipo": "variavel", "palavra_chave": "uber", "valor": ""},
         {"tipo": "variavel", "palavra_chave": "99app", "valor": ""},
-        {"tipo": "variavel", "palavra_chave": "99",    "valor": ""},
+        {"tipo": "variavel", "palavra_chave": "99", "valor": ""},
     ])
 
 def load_rules_sb(sb, uid: str) -> pd.DataFrame:
     try:
         res = sb.table(TBL_RULES).select("tipo,palavra_chave,valor").eq("user_id", uid).execute()
         data = res.data or []
+
         if not data:
             return rules_default_df()
 
@@ -357,11 +468,13 @@ def save_rules_sb(sb, uid: str, df: pd.DataFrame):
 
 # =========================
 # Parcelamentos (Supabase)
+# Tabela: user_id, id_parcelamento, pessoa, categoria
 # =========================
 def load_parc_sb(sb, uid: str) -> dict:
     try:
         res = sb.table(TBL_PARC).select("id_parcelamento,pessoa,categoria").eq("user_id", uid).execute()
         data = res.data or []
+
         out = {}
         for r in data:
             out[str(r.get("id_parcelamento"))] = {
@@ -380,6 +493,7 @@ def upsert_parc_sb(sb, uid: str, pid: str, pessoa: str, categoria: str):
         "pessoa": pessoa or "",
         "categoria": categoria or "",
     }
+
     try:
         sb.table(TBL_PARC).delete().eq("user_id", uid).eq("id_parcelamento", pid).execute()
         sb.table(TBL_PARC).insert(payload).execute()
@@ -398,13 +512,20 @@ def delete_parc_sb(sb, uid: str, pid: str):
 # =========================
 # Parcelas (detecção)
 # =========================
-RE_PARCELA = re.compile(r"(?:parcela\s*)?(?P<atual>\d{1,2})\s*(?:/|de)\s*(?P<total>\d{1,2})", re.IGNORECASE)
+RE_PARCELA = re.compile(
+    r"(?:parcela\s*)?(?P<atual>\d{1,2})\s*(?:/|de)\s*(?P<total>\d{1,2})",
+    re.IGNORECASE
+)
 
 def extrair_parcela(desc: str):
     m = RE_PARCELA.search(desc or "")
     if not m:
         return "", None, None
-    return f"{int(m.group('atual'))}/{int(m.group('total'))}", int(m.group("atual")), int(m.group("total"))
+    return (
+        f"{int(m.group('atual'))}/{int(m.group('total'))}",
+        int(m.group("atual")),
+        int(m.group("total")),
+    )
 
 def remover_texto_parcela(desc: str) -> str:
     return RE_PARCELA.sub("", desc or "").strip()
@@ -416,9 +537,8 @@ def gerar_id_parcelamento(desc: str, valor: float):
 
 # =========================
 # Classificação
-# prioridade:
 # 1) parcelamento salvo
-# 2) regra manual
+# 2) regra manual (tipo + palavra + valor)
 # 3) fallback
 # =========================
 def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, default_person: str, default_cat: str):
@@ -443,6 +563,7 @@ def classify_manual(desc: str, valor_lanc: float, rules_df: pd.DataFrame, defaul
     for _, r in rules.iterrows():
         kw = r["kw_norm"]
         kw_comp = r["kw_comp"]
+
         if not kw and not kw_comp:
             continue
 
@@ -473,7 +594,11 @@ def classify(desc: str, valor_lanc: float, id_parc: str, parc_rules: dict, rules
 # Parser PDF Nubank
 # =========================
 LINHA_RE = re.compile(r"^(?P<dia>\d{2})\s(?P<mes>[A-Z]{3})\s(?P<desc>.+?)\sR\$\s(?P<valor>[\d\.,]+)$")
-MESES = {"JAN":"01","FEV":"02","MAR":"03","ABR":"04","MAI":"05","JUN":"06","JUL":"07","AGO":"08","SET":"09","OUT":"10","NOV":"11","DEZ":"12"}
+MESES = {
+    "JAN": "01", "FEV": "02", "MAR": "03", "ABR": "04",
+    "MAI": "05", "JUN": "06", "JUL": "07", "AGO": "08",
+    "SET": "09", "OUT": "10", "NOV": "11", "DEZ": "12"
+}
 
 def parse_nubank_pdf(file_bytes: bytes, ano: int):
     if not PDF_OK:
@@ -487,24 +612,36 @@ def parse_nubank_pdf(file_bytes: bytes, ano: int):
                 m = LINHA_RE.match(raw.strip())
                 if not m:
                     continue
+
                 mes = MESES.get(m.group("mes"))
                 if not mes:
                     continue
+
                 data = f"{ano}-{mes}-{m.group('dia')}"
                 desc = m.group("desc").strip()
                 valor = float(m.group("valor").replace(".", "").replace(",", "."))
-                rows.append({"data": data, "descricao": desc, "valor": valor})
+
+                rows.append({
+                    "data": data,
+                    "descricao": desc,
+                    "valor": valor
+                })
 
     df = pd.DataFrame(rows)
     if not df.empty:
         df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.date.astype(str)
+
     return df
 
 
 # =========================
 # APP
 # =========================
-st.set_page_config(page_title=APP_TITLE, layout="wide")
+st.set_page_config(
+    page_title=APP_TITLE,
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 inject_css()
 
 sb = supabase_client()
@@ -519,6 +656,7 @@ rules_df = load_rules_sb(sb, uid)
 parc_rules = load_parc_sb(sb, uid)
 
 st.markdown(f"## {APP_TITLE}")
+
 with st.expander("⚙️ Configurações", expanded=False):
     default_person = st.text_input("Pessoa padrão (se não casar regra)", value="Pendente")
     default_cat = st.text_input("Categoria padrão (se não casar regra)", value="Revisar")
@@ -532,10 +670,14 @@ with st.expander("⚙️ Configurações", expanded=False):
     with colC:
         mostrar_detalhes = st.checkbox("Detalhes", value=False)
 
-up = st.file_uploader("Envie o PDF do Nubank (texto selecionável) ou CSV (data, descricao, valor).", type=["pdf", "csv"])
+up = st.file_uploader(
+    "Envie o PDF do Nubank (texto selecionável) ou CSV (data, descricao, valor).",
+    type=["pdf", "csv"]
+)
 
-
-# ===== REGRAS editor =====
+# =========================
+# REGRAS editor
+# =========================
 with st.expander("🧠 Regras (editar/cadastrar) — fica salvo no seu login", expanded=False):
     st.caption("Dica: deixe o campo VALOR vazio pra regra valer pra qualquer valor.")
     st.caption("A categoria é definida pelo TIPO: fixo = Fixo | variavel = Variável | outros = categoria padrão.")
@@ -553,11 +695,13 @@ with st.expander("🧠 Regras (editar/cadastrar) — fica salvo no seu login", e
     )
 
     c1, c2 = st.columns(2)
+
     with c1:
         if st.button("💾 Salvar regras"):
             save_rules_sb(sb, uid, rules_edited)
             st.success("Regras salvas ✅")
             st.rerun()
+
     with c2:
         if st.button("♻️ Resetar para defaults", type="secondary"):
             save_rules_sb(sb, uid, rules_default_df())
@@ -575,11 +719,14 @@ if not up:
 if up.name.lower().endswith(".csv"):
     df = pd.read_csv(up)
     df.columns = [c.strip().lower() for c in df.columns]
+
     if "descrição" in df.columns and "descricao" not in df.columns:
         df["descricao"] = df["descrição"]
+
     if not {"data", "descricao", "valor"}.issubset(set(df.columns)):
         st.error("CSV precisa ter colunas: data, descricao, valor")
         st.stop()
+
     df = df[["data", "descricao", "valor"]].copy()
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
     df["data"] = pd.to_datetime(df["data"], errors="coerce").dt.date.astype(str)
@@ -595,6 +742,7 @@ if df.empty:
     st.warning("Não consegui extrair lançamentos do arquivo.")
     st.stop()
 
+# Enriquecer parcelas
 parc = df["descricao"].astype(str).apply(extrair_parcela)
 df["parcela_txt"] = parc.apply(lambda x: x[0])
 df["parcela_atual"] = parc.apply(lambda x: x[1])
@@ -602,8 +750,11 @@ df["parcela_total"] = parc.apply(lambda x: x[2])
 df["desc_base"] = df["descricao"].astype(str).apply(remover_texto_parcela)
 df["id_parcelamento"] = df.apply(lambda r: gerar_id_parcelamento(r["descricao"], r["valor"]), axis=1)
 
+# Classificar
 rules_live = rules_edited.fillna("") if "rules_edited" in locals() else rules_df.fillna("")
-pessoas, cats, fonte = [], [], []
+
+pessoas, cats, fontes = [], [], []
+
 for _, r in df.iterrows():
     p, c, f = classify(
         str(r["descricao"]),
@@ -616,11 +767,11 @@ for _, r in df.iterrows():
     )
     pessoas.append(p)
     cats.append(c)
-    fonte.append(f)
+    fontes.append(f)
 
 df["pessoa"] = pessoas
 df["categoria"] = cats
-df["fonte_regra"] = fonte
+df["fonte_regra"] = fontes
 
 
 # =========================
@@ -631,7 +782,12 @@ total_geral = float(df["valor"].sum())
 st.metric("Total geral", brl(total_geral))
 
 def render_totais_por_pessoa(df_):
-    totais = df_.groupby("pessoa", as_index=False)["valor"].sum().sort_values("valor", ascending=False)
+    totais = (
+        df_.groupby("pessoa", as_index=False)["valor"]
+        .sum()
+        .sort_values("valor", ascending=False)
+    )
+
     st.subheader("Totais por pessoa")
 
     cols = st.columns(2 if len(totais) > 1 else 1)
@@ -643,7 +799,13 @@ render_totais_por_pessoa(df)
 if mostrar_categoria:
     st.subheader("Resumo por categoria")
     resumo_cat = (
-        df.pivot_table(index="pessoa", columns="categoria", values="valor", aggfunc="sum", fill_value=0)
+        df.pivot_table(
+            index="pessoa",
+            columns="categoria",
+            values="valor",
+            aggfunc="sum",
+            fill_value=0
+        )
         .sort_index()
     )
     st.dataframe(resumo_cat, use_container_width=True)
@@ -654,12 +816,17 @@ if mostrar_categoria:
 # =========================
 if mostrar_pendencias:
     st.subheader("Pendências (você pode editar pessoa/categoria aqui)")
-    pend = df[(df["pessoa"].str.lower() == "pendente") | (df["categoria"].str.lower() == "revisar")].copy()
+
+    pend = df[
+        (df["pessoa"].str.lower() == "pendente") |
+        (df["categoria"].str.lower() == "revisar")
+    ].copy()
 
     if pend.empty:
         st.success("Nada pendente 🎯")
     else:
         pend_view = pend[["data", "descricao", "valor", "pessoa", "categoria"]].copy()
+
         pend_edit = st.data_editor(
             pend_view,
             use_container_width=True,
@@ -668,6 +835,7 @@ if mostrar_pendencias:
         )
 
         cA, cB = st.columns(2)
+
         with cA:
             if st.button("✅ Aplicar edições (só nesta tela)"):
                 for _, row in pend_edit.iterrows():
@@ -679,6 +847,7 @@ if mostrar_pendencias:
                     df.loc[mask, "pessoa"] = row["pessoa"]
                     df.loc[mask, "categoria"] = row["categoria"]
                     df.loc[mask, "fonte_regra"] = "manual_tela"
+
                 st.success("Aplicado! Totais atualizados abaixo ✅")
                 render_totais_por_pessoa(df)
 
@@ -687,10 +856,11 @@ if mostrar_pendencias:
 
 
 # =========================
-# ENSINAR PARCELAMENTOS
+# PARCELAMENTOS
 # =========================
 with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=False):
     df_parc = df[df["parcela_total"].notna()].copy()
+
     if df_parc.empty:
         st.info("Nenhum parcelado detectado nesta fatura.")
     else:
@@ -703,14 +873,17 @@ with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=
         sel_id = sel.split(" | ")[0].strip()
 
         ex = df_parc[df_parc["id_parcelamento"] == sel_id].iloc[0]
+
         pessoa_sel = st.text_input("Pessoa (para este parcelamento)", value=str(ex["pessoa"]))
         cat_sel = st.text_input("Categoria (para este parcelamento)", value=str(ex["categoria"]))
 
         c1, c2 = st.columns(2)
+
         with c1:
             if st.button("💾 Salvar parcelamento"):
                 upsert_parc_sb(
-                    sb, uid,
+                    sb,
+                    uid,
                     pid=sel_id,
                     pessoa=pessoa_sel,
                     categoria=cat_sel,
@@ -731,7 +904,16 @@ with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=
 if mostrar_detalhes:
     with st.expander("🧾 Detalhes (lançamentos)", expanded=False):
         st.dataframe(
-            df[["data", "descricao", "valor", "pessoa", "categoria", "fonte_regra", "parcela_txt", "id_parcelamento"]],
+            df[[
+                "data",
+                "descricao",
+                "valor",
+                "pessoa",
+                "categoria",
+                "fonte_regra",
+                "parcela_txt",
+                "id_parcelamento"
+            ]],
             use_container_width=True,
             height=420
         )
