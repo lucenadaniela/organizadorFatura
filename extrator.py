@@ -858,7 +858,7 @@ if mostrar_pendencias:
 # =========================
 # PARCELAMENTOS
 # =========================
-with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=False):
+with st.expander("Parcelamentos", expanded=False):
     df_parc = df[df["parcela_total"].notna()].copy()
 
     if df_parc.empty:
@@ -874,8 +874,8 @@ with st.expander("📌 Parcelamentos (salvar para próximas faturas)", expanded=
 
         ex = df_parc[df_parc["id_parcelamento"] == sel_id].iloc[0]
 
-        pessoa_sel = st.text_input("Pessoa (para este parcelamento)", value=str(ex["pessoa"]))
-        cat_sel = st.text_input("Categoria (para este parcelamento)", value=str(ex["categoria"]))
+        pessoa_sel = st.text_input("Pessoa", value=str(ex["pessoa"]))
+        cat_sel = st.text_input("Categoria", value=str(ex["categoria"]))
 
         c1, c2 = st.columns(2)
 
